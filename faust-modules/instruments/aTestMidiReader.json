@@ -1,0 +1,7 @@
+{
+    "moduleType":"midi_reader",
+    "name":"Test midi file",
+    "path" : "../data/midi/scale.mid"
+} 
+   
+ 

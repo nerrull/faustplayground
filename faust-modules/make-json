@@ -20,8 +20,8 @@ for d in *; do
 	echo $s
 	echo -n '"'$d'"' ": ["
 	w=''
-	for f in $d/*.dsp; do
-		echo -n $w '"'$f'"'
+	for f in $d/*; do
+		echo -n $w '"faust-modules/'$f'"'
 		w=','
 	done
 	echo -n "]"

@@ -1,0 +1,7 @@
+{
+    "moduleType":"audio_loader",
+    "name":"test",
+    "path" : "../data/samples/Catbird.mp3"
+} 
+   
+ 
