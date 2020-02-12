@@ -1,0 +1,30 @@
+{
+    "n_movements":2,
+
+    "movements":[
+        {
+            "min_loops" : 2, 
+            "instruments" : ["Kisana", "TunedBar"],
+            "midi_files" : {
+                "Kisana" : [
+                    "Dayung - 1.mid","Dayung - 2.mid"
+                ],
+                "TunedBar" : [
+                    "Dayung - 3.mid","Dayung - 4.mid"
+                ]
+            }
+        },
+        {
+            "min_loops" : 2, 
+            "instruments" : ["Kisana", "TunedBar"],
+            "midi_files" : {
+                "Kisana" : [
+                    "Dayung - 5.mid","Dayung - 2.mid"
+                ],
+                "TunedBar" : [
+                    "Dayung - 3.mid","Dayung - 4.mid"
+                ]
+            }
+        }
+    ]
+}
