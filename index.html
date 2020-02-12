@@ -46,13 +46,40 @@
 
  <!-- 'init' is defined in faustplayground.js -->
 <script>
+        function onMIDISuccess(midiAccess) {
+            console.log(midiAccess);
+
+            var inputs = midiAccess.inputs;
+            var outputs = midiAccess.outputs;
+        }
+
+        function onMIDIFailure() {
+            console.log('Could not access your MIDI devices.');
+        }
+
+        function onMIDISuccess(midiAccess) {
+            for (var input of midiAccess.inputs.values()){
+                input.onmidimessage = getMIDIMessage;
+            }
+        }
+
+        function getMIDIMessage(midiMessage) {
+            console.log(midiMessage);
+        }
+
         var isWasm = (typeof (WebAssembly) !== "undefined");
         if (!isWasm) {
             alert("WebAssembly is not supported in this browser, the page will not work !")
         }
         // 'faust_module' global is defined in webaudio-wasm-wrapper.js file, 'onRuntimeInitialized' will be called when code is ready
         // (see https://kripken.github.io/emscripten-site/docs/getting_started/FAQ.html)
-        
+        if (navigator.requestMIDIAccess) {
+            console.log('This browser supports WebMIDI!');
+        } else {
+            console.log('WebMIDI is not supported in this browser.');
+        }
+        navigator.requestMIDIAccess()
+            .then(onMIDISuccess, onMIDIFailure);
         faust_module['onRuntimeInitialized'] = init;
     </script>
 
