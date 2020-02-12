@@ -21,7 +21,7 @@ process = tunedBar(gate):>_;
 tunedBar(n) =
 		((select-1)*-1) <:
 		//nModes resonances with nModes feedbacks for bow table look-up 
-		par(i,nModes,(resonance(i,freq,gating)~_)):> + : 
+		par(i,nModes,(resonance(i,freq_offset,gating)~_)):> + : 
 		//Signal Scaling and stereo
 		*(15);
 //==================== GUI SPECIFICATION ================
@@ -34,11 +34,12 @@ gain = hslider("gain", .2, 0,1, 0.01);
 gating = gate*0.5: upfront;
 gate = button("gate");
 freq = hslider("freq", 100, 40, 1000, 1);
+note_offset = hslider("[1]Note offset [acc:.125 0 -1 0 1]", 0, -1, 1, 0.125);
+freq_offset = ba.midikey2hz(ba.hz2midikey(freq)+note_offset);
 
 hand = hslider("[1]Instrument Hand[acc:1 0 -10 0 10]", 5, 0, N, 1):si.smooth(0.999):min(N):max(0):int:ba.automat(B, 15, 0.0);
 B = hslider("[3]Speed[style:knob][acc:0 1 -10 0 10]", 480, 180, 720, 60): si.smooth(0.99) : min(720) : max(180) : int;
-hight = hslider("[2]Hight[acc:0 1 -10 0 10]", 4, 0.5, 8, 0.1);//:si.smooth(0.999);
-octave(d) = freq(d)*(hight);
+hight = hslider("[2]Height[acc:0 1 -10 0 10]", 4, 0.5, 8, 0.1);//:si.smooth(0.999);
 position(n) = abs(hand - n) < 0.5;
 upfront(x) = abs(x-x') > 0;
 
