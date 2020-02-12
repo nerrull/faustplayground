@@ -22,9 +22,6 @@
     height:50px;
     padding-top: 0.6em;
     padding-bottom: 0.6em;
-    
-
-
 }
 #moduleInput {
     height:88px;
@@ -94,15 +91,26 @@
 /* Module nodes */
 .moduleFaust .node {
 	position: absolute;
-	margin-top: -16px;
-	top: 50%;
+	/* margin-top: -16px; */
+	/* top: 50%; */
 }
 .moduleFaust .node-input {
-	left: -18px;
+	left: -18px; 
+	/* left:50% -18px; */
+	top: -18px;
 }
 .moduleFaust .node-output {
-	right: -18px;
+	right: -18px; 
+	bottom: -18px;
+
 }
+
+.moduleFaust .midi-input {
+	left: 50%;
+	top: -18px;
+}
+
+
 
 /* Module close */
 .moduleFaust .close {
@@ -310,26 +318,69 @@ footer>img {
 	border-radius: 50%;
 	box-shadow: 0 0 3px rgba(0,0,0, .5);
 	cursor: pointer;
-	height: 34px;
+	height: 24px;
 	position: relative;
-	width: 34px;
+	width: 24px;
 }
 .node span {
 	border-radius: 50%;
 	display: block;
-	height: 24px;
-	left: 5px;
+	height: 16px;
+	left: 4px;
 	position: absolute;
-	top: 5px;
-	width: 24px;
+	top: 4px;
+	width: 16px;
 }
+
 .node-input span {
 	background: #24d711;
 }
 
 .node-output span {
 	background: #ff3030;
-}*/
+}
+
+.midi-input span {
+	background: #fca103;
+}
+
+.parameter-node {
+	background: #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 3px rgba(0,0,0, .5);
+	cursor: pointer;
+	height: 16px;
+	position: absolute;
+	width: 16px;
+}
+
+.parameter-node span {
+	position: absolute;
+	border-radius: 50%;
+	display: block;
+	height: 8px;
+	left: 4px;
+	top: 4px;
+	width: 8px;
+}
+
+
+.parameter-node-input span {
+	background: #24d711;
+}
+
+.parameter-node-output span {
+	background: #ff3030;
+}
+
+
+.control-group .parameter-node-input {
+	left: 0px;
+}
+.control-group .parameter-node-output {
+	right: 0px;
+}
+
 .node:hover {
 	box-shadow: 0 0 3px rgba(0,0,0, 1);
 }
@@ -368,14 +419,14 @@ footer>img {
 /* Module nodes */
 .module .node {
 	position: absolute;
-	margin-top: -16px;
-	top: 50%;
+	/* margin-top: -16px; */
+	/* top: 50%; */
 }
 .module .node-input {
-	left: -18px;
+	left: -12px;
 }
 .module .node-output {
-	right: -18px;
+	right: -12px;
 }
 
 /* Module close */
