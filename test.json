@@ -1,0 +1,19 @@
+{
+
+"css" : ["css/*.dsp"],
+"data" : ["data/*.dsp"],
+"Documentation" : ["Documentation/*.dsp"],
+"faustlibraries" : ["faustlibraries/*.dsp"],
+"faust-modules" : ["faust-modules/*.dsp"],
+"favicon.ico" : ["favicon.ico/*.dsp"],
+"fonts" : ["fonts/*.dsp"],
+"img" : ["img/*.dsp"],
+"index.html" : ["index.html/*.dsp"],
+"js" : ["js/*.dsp"],
+"json" : ["json/*.dsp"],
+"logo" : ["logo/*.dsp"],
+"Makefile" : ["Makefile/*.dsp"],
+"README.md" : ["README.md/*.dsp"],
+"ressources" : ["ressources/*.dsp"],
+"test" : ["test/*.dsp"]
+}

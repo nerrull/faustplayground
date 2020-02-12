@@ -253,6 +253,17 @@ class FaustInterfaceControler {
         controler.value = "0";
         return controler;
     }
+
+    static addSlider(name, min, max, value,step, callback):FaustInterfaceControler{
+
+        var itemElement :Iitem =  { type:"hslider", label:name,min : min, max :max, init:value, address: "", step:step, meta:[] };
+        var controler: FaustInterfaceControler = new FaustInterfaceControler(
+            (faustInterface) => { },
+            (adress, value) => { callback(value)}
+        );
+        controler.itemParam = itemElement;
+        return controler;
+    }
 }
 
 /********************************************************************

@@ -59,7 +59,9 @@ class MIDIManager{
         this.noteRegistrar = {}; // get event for requested note
         this.onMidiEvent=midiCallback
     }
-
+    setBPM(bpm){
+        this.BPM = bpm;
+    }
     start(onsuccess =null) {
         console.log("Starting midi playback of " + this.filename)
         this.currentTime = clamp(0, this.getLength(), this.currentTime);
@@ -243,24 +245,17 @@ class MIDIManager{
         var data = this.data;
         var ctx = this.getContext();
         var length = data.length;
-        //
-        this.queuedTime = 0.5;
-        ///
+        this.queuedTime = 0.;
         var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
         var foffset = currentTime - this.currentTime;
         
-        // ///
-        // if (this.api !== 'webaudio') { // set currentTime on ctx
-        //     var now = getNow();
-        //     __now = __now || now;
-        //     ctx.currentTime = (now - __now) / 1000;
-        // }
-        ///
         this.startTime = ctx.currentTime;
-        ///
         for (var n = 0; n < length && messages < 100; n++) {
             var obj = data[n];
-            if ((this.queuedTime += obj[1]) <= currentTime) {
+            var midi_time = obj[1];
+            var midi_beats = obj[2];
+            var note_ms = this.beatsToSeconds(midi_beats)*1000;
+            if ((this.queuedTime += note_ms) <= currentTime) {
                 offset = this.queuedTime;
                 continue;
             }
@@ -274,6 +269,7 @@ class MIDIManager{
             
             //var channelId = event.channel;
             // var channel = MIDI.channels[channelId];
+
             let channelId = 0
             var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
             var queueTime = this.queuedTime - offset + this.startDelay;
@@ -363,13 +359,8 @@ class MIDIManager{
         return totalTime;
     };
     
-    
-    getNow():number {
-        if (window.performance && window.performance.now) {
-            return window.performance.now();
-        } else {
-            return Date.now();
-        }
-    };
+    beatsToSeconds(beats){
+        return beats /(this.BPM/60)
+    }
 };
 

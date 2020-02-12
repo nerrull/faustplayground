@@ -54,7 +54,7 @@ class Library{
 
     //get json with library infos
     fillLibrary() {
-        var url: string = "faust-modules/modules.json"
+        var url: string = "faust-modules/modules_list.json"
         console.log("Filling lib")
         Utilitary.getXHR(url, (json: string) => { this.fillLibraryCallBack(json) }, (errorMessage: string) => { Utilitary.errorCallBack(errorMessage) });
     }

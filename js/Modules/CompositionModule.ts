@@ -93,6 +93,14 @@ class InstrumentController{
             this.isPlaying = true;
         }
     }
+
+    setBPM(bpm){
+        for(let key of Object.keys(this.movementMidiControllers)){  
+            for (let c of this.movementMidiControllers[key]){
+                c.setBPM(bpm)
+            }
+        }
+    }
     
     stop():void{
         this.movementMidiControllers[this.currentMovement][this.currentController].stop();
@@ -212,13 +220,22 @@ class CompositionModule extends GraphicalModule{
     
     playAll():void{
         for(let instrument of this.instruments){
-            let ic = this.instrumentControllers[instrument]
-            ic.movementIndex =this.currentMovement;
+            let ic:InstrumentController = this.instrumentControllers[instrument]
+            ic.currentMovement =this.movementIndex;
             if (!ic.isPlaying){
                 ic.play();
             }
         }
     }
+
+    setBPM(bpm):void{
+        for(let instrument of this.instruments){
+            let ic:InstrumentController = this.instrumentControllers[instrument]
+            ic.setBPM(bpm)
+
+        }
+    }
+    
     
     stopAll():void{
         for(let instrument of this.instruments){
@@ -324,6 +341,7 @@ class CompositionModule extends GraphicalModule{
                 this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => {}))
             }
 
+            this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (value) => {this.setBPM(value)}))
             
             //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
         }

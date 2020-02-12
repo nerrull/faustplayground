@@ -85,7 +85,7 @@ function Replayer(midiFile, timeWarp, eventProcessor, bpm) :any{
 				beatsToGenerate = midiEvent.ticksToEvent / ticksPerBeat;
 				secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
 			}
-			///
+			
 			var time = (secondsToGenerate * 1000 * timeWarp) || 0;
 			temporal.push([ midiEvent, time, beatsToGenerate]);
 			midiEvent = getNextEvent();
