@@ -417,7 +417,9 @@ faust.createDSPFactoryAux = function (code, argv, internal_memory, callback)
     }
     var sha_key = Sha1.hash(code + ((internal_memory) ? "internal_memory": "external_memory") + argv_str, true);
     var factory = faust.factory_table[sha_key];
+
     if (factory) {
+        factory.isPoly = !internal_memory
         console.log("Existing library : " + factory.name);
         // Existing factory, do not create it...
         callback(factory);
@@ -2418,9 +2420,9 @@ faust.createPolyDSPInstanceAux = function (factory, time1, mixer_instance, dsp_i
     sp.keyOn = function (channel, pitch, velocity)
     {
         var voice = sp.getFreeVoice();
-        if (faust.debug) {
-            console.log("keyOn voice %d", voice);
-        }
+        console.log("keyOn voice %d", voice);
+        console.log("pitch %d", pitch);
+        console.log("velocity %d", velocity);
         for (var i = 0; i < sp.fFreqLabel.length; i++) {
             sp.factory.setParamValue(sp.dsp_voices[voice], sp.fFreqLabel[i], sp.midiToFreq(pitch));
         }
@@ -2688,8 +2690,11 @@ faust.createPolyDSPInstance = function (factory, context, buffer_size, polyphony
             table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' })
         }
     };
+    WebAssembly.instantiate(factory.module, importObject).then(wat => {
+        console.log("at least this works?")
+    })
 
-    fetch('mixer32.wasm')
+    fetch('/js/lib/mixer32.wasm')
     .then(mixer_res => mixer_res.arrayBuffer())
     .then(mixer_bytes => WebAssembly.instantiate(mixer_bytes, mixerObject))
     .then(mixer_module =>
