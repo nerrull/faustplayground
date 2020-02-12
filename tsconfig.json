@@ -1,0 +1,17 @@
+
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "noImplicitThis":true,
+        "noUnusedLocals":true,
+        "target": "ES6",
+        "outFile": "js/faustplayground.js",
+        "module": "system"
+    },
+    "exclude": [
+        "node_modules"
+    ],
+    "include": [
+       "js/Main.ts"
+    ]
+}
