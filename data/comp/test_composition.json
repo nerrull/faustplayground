@@ -1,17 +1,37 @@
 {
-    "n_movements":2,
+    "n_movements":3,
 
     "movements":[
         {
             "min_loops" : 2, 
-            "instruments" : ["Kisana", "TunedBar"],
+            "instruments" : ["Flute", "SoftHarp", "TunedBars", "TunedBars2"],
+            "midi_files" : {
+                "Flute" : [
+                    "0B 01.mid"
+                ],
+                "SoftHarp" : [
+                    "0B 02.mid"
+                ],
+                "TunedBars" : [
+                    "0B 03.mid"
+                ],
+                "TunedBars2" : [
+                    "0B 04.mid"
+                ]
+
+            }
+        },
+        {
+            "min_loops" : 2, 
+            "instruments" : ["Kisana", "TunedBar","DJEMBE"],
             "midi_files" : {
                 "Kisana" : [
                     "Dayung - 1.mid","Dayung - 2.mid"
                 ],
                 "TunedBar" : [
                     "Dayung - 3.mid","Dayung - 4.mid"
-                ]
+                ],
+                "DJEMBE" :["Dayung - 3.mid", "Dayung - 3.mid"]
             }
         },
         {
