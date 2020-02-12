@@ -1,3 +1,12 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 /// <reference path="App.ts"/>
 /// <reference path="Utilitary.ts"/>
 //contains all the key of resources json files in folders ressources
@@ -473,6 +482,15 @@ class Utilitary {
     static replaceAll(str, find, replace) {
         return str.replace(new RegExp(find, 'g'), replace);
     }
+    static getDataDir() {
+        return "../data/";
+    }
+    static getCompositionDir() {
+        return Utilitary.getDataDir() + "comp/";
+    }
+    static getMidiDir() {
+        return Utilitary.getDataDir() + "midi/";
+    }
 }
 Utilitary.messageRessource = new Ressources();
 Utilitary.idX = 0;
@@ -481,11 +499,19 @@ Utilitary.isAccelerometerOn = false;
 Utilitary.isAccelerometerEditOn = false;
 class PositionModule {
 }
+class AudioUtils {
+}
+AudioUtils.midiToFreq = function (note) {
+    return 440.0 * Math.pow(2.0, (note - 69.0) / 12.0);
+};
+AudioUtils.normalizeVelocity = function (v) {
+    return v / 128.0;
+};
 /*				DRAGGING.JS
-    Handles Graphical Drag of Modules and Connections
-    This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
+Handles Graphical Drag of Modules and Connections
+This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
 
-    --> Things could probably be easier...
+--> Things could probably be easier...
 */
 /// <reference path="Connect.ts"/>
 /// <reference path="Modules/ModuleClass.ts"/>
@@ -556,10 +582,10 @@ class Drag {
         // Move drag element by the same amount the cursor has moved.
         moduleContainer.style.left = (this.elementStartLeft + x - this.cursorStartX) + "px";
         moduleContainer.style.top = (this.elementStartTop + y - this.cursorStartY) + "px";
-        if (module.moduleFaust.getInputConnections() != null) { // update any lines that point in here.
+        if (module.getInputConnections() != null || module.getInputParameterConnections() != null) { // update any lines that point in here.
             Connector.redrawInputConnections(module, this);
         }
-        if (module.moduleFaust.getOutputConnections() != null) { // update any lines that point out of here.
+        if (module.getOutputConnections() != null || module.getOutputParameterConnections() != null) { // update any lines that point out of here.
             Connector.redrawOutputConnections(module, this);
         }
         event.stopPropagation();
@@ -585,11 +611,20 @@ class Drag {
         return x1 - (x1 - x2) / 2;
         ;
     }
+    getSliderInfo(start) {
+        let sib = start.nextSibling;
+        if (sib.classList.contains("slider-info")) {
+            return sib;
+        }
+        else
+            return this.getSliderInfo(sib);
+    }
     startDraggingConnection(module, target) {
         // if this is the green or red button, use its parent.
         if (target.classList.contains("node-button")) {
             target = target.parentNode;
         }
+        this.dragSourceNode = target;
         // Get the position of the originating connector with respect to the page.
         var offset = target;
         var x = module.moduleView.inputOutputNodeDimension / 2;
@@ -604,9 +639,20 @@ class Drag {
         this.cursorStartY = y;
         // remember if this is an input or output node, so we can match
         this.isOriginInput = target.classList.contains("node-input");
+        this.isParameter = target.classList.contains("parameter-node");
+        if (this.isParameter) {
+            let info = this.getSliderInfo(target);
+            this.parameterAddress = info.getAttribute("parameter_address");
+        }
+        this.isMidi = target.classList.contains("midi-node-output");
+        if (this.isMidi) {
+            let info = this.getSliderInfo(target);
+            this.instrument_id = info.getAttribute("instrument_id");
+        }
         module.moduleView.getInterfaceContainer().unlitClassname = module.moduleView.getInterfaceContainer().className;
         //module.moduleView.getInterfaceContainer().className += " canConnect";
         // Create a connector visual line
+        this.connector = new Connector();
         var svgns = "http://www.w3.org/2000/svg";
         var curve = document.createElementNS(svgns, "path");
         var d = this.setCurvePath(x, y, x, y, x, x);
@@ -635,7 +681,9 @@ class Drag {
         if (destination && destination != sourceModule && this.isConnectionUnique(sourceModule, destination) && resultIsConnectionValid) {
             // Get the position of the originating connector with respect to the page.
             var offset;
-            if (!this.isOriginInput)
+            if (this.isParameter)
+                offset = target.parentNode;
+            else if (!this.isOriginInput)
                 offset = destination.moduleView.getInputNode();
             else
                 offset = destination.moduleView.getOutputNode();
@@ -664,7 +712,7 @@ class Drag {
                 }
             }
             else {
-                if (toElem.classList.contains("node-input")) {
+                if (toElem.classList.contains("node-input") || toElem.classList.contains("parameter-node-input")) {
                     // Make sure the connector line points go from src->dest (x1->x2)
                     var d = this.setCurvePath(x2, y2, x1, y1, this.calculBezier(x1, x2), this.calculBezier(x1, x2));
                     this.connector.connectorShape.setAttributeNS(null, "d", d);
@@ -676,17 +724,65 @@ class Drag {
                     dst = destination;
                 }
             }
+            //todo check connection type (signal or paramater )
             if (src && dst) {
-                var connector = new Connector();
-                connector.connectModules(src, dst);
-                dst.moduleFaust.addInputConnection(connector);
-                src.moduleFaust.addOutputConnection(connector);
-                this.connector.destination = dst;
-                this.connector.source = src;
-                connector.saveConnection(src, dst, this.connector.connectorShape);
-                this.connector.connectorShape.onclick = (event) => { connector.deleteConnection(event, this); };
-                //this.connectorShape = null;
-                return;
+                if (this.isParameter) {
+                    if (this.isMidi) {
+                        if (target.classList.contains("node-button")) {
+                            target = target.parentNode;
+                        }
+                        this.connector.sourceNode = this.dragSourceNode;
+                        this.connector.dstNode = target;
+                        let fSrc = src;
+                        let fDst = dst;
+                        console.log(`Trying to connect ${fSrc.getType}-${this.instrument_id} to ${fDst.moduleFaust.fName}`);
+                        this.connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
+                        dst.moduleFaust.addParameterInputConnection(this.connector);
+                        src.moduleFaust.addParameterOutputConnection(this.connector);
+                        return;
+                    }
+                    if (target.classList.contains("node-button")) {
+                        target = target.parentNode;
+                    }
+                    let targetParameterAddress = this.getSliderInfo(target).getAttribute("parameter_address");
+                    this.connector.sourceNode = this.dragSourceNode;
+                    this.connector.dstNode = target;
+                    console.log("Trying to connect " + this.parameterAddress + " to " + targetParameterAddress);
+                    this.connector.connectModuleParameters(src, dst, this.parameterAddress, targetParameterAddress);
+                    dst.moduleFaust.addParameterInputConnection(this.connector);
+                    src.moduleFaust.addParameterOutputConnection(this.connector);
+                    return;
+                }
+                else if (src.getType() === "midi") {
+                    let fSrc = src;
+                    let fDst = dst;
+                    //todo check if fdst is poly
+                    this.connector.connectMidiModules(fSrc, fDst);
+                    fDst.moduleFaust.addInputConnection(this.connector);
+                    //todo
+                    fSrc.moduleFaust.addOutputConnection(this.connector);
+                    this.connector.destination = fDst;
+                    //this.connector.source = fSrc;
+                    //connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
+                    //todo
+                    this.connector.connectorShape.onclick = (event) => { connector.deleteConnection(event, this); };
+                    //this.connectorShape = null;
+                    return;
+                }
+                else {
+                    let fSrc = src;
+                    let fDst = dst;
+                    var connector = new Connector();
+                    connector.connectModules(fSrc, fDst);
+                    fDst.moduleFaust.addInputConnection(connector);
+                    fSrc.moduleFaust.addOutputConnection(connector);
+                    this.connector.destination = fDst;
+                    this.connector.source = fSrc;
+                    connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
+                    this.connector.connectorShape.onclick = (event) => { connector.deleteConnection(event, this); };
+                    //this.connectorShape = null;
+                    return;
+                }
             }
         }
         // Otherwise, delete the line
@@ -780,7 +876,7 @@ class Drag {
         var arrivingNode;
         var modules = Utilitary.currentScene.getModules();
         for (var i = 0; i < modules.length; i++) {
-            if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) || modules[i].moduleView.isPointInInput(x, y)) {
+            if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) || modules[i].moduleView.isPointInInput(x, y) || modules[i].moduleView.isPointInNode(x, y)) {
                 arrivingNode = modules[i];
                 break;
             }
@@ -817,18 +913,18 @@ class Drag {
     }
     isConnectionUnique(moduleSource, moduleDestination) {
         if (this.isOriginInput) {
-            for (var i = 0; i < moduleSource.moduleFaust.fInputConnections.length; i++) {
-                for (var j = 0; j < moduleDestination.moduleFaust.fOutputConnections.length; j++) {
-                    if (moduleSource.moduleFaust.fInputConnections[i] == moduleDestination.moduleFaust.fOutputConnections[j]) {
+            for (var i = 0; i < moduleSource.getInputConnections().length; i++) {
+                for (var j = 0; j < moduleDestination.getOutputConnections().length; j++) {
+                    if (moduleSource.getInputConnections[i] == moduleDestination.getOutputConnections()[j]) {
                         return false;
                     }
                 }
             }
         }
         else {
-            for (var i = 0; i < moduleSource.moduleFaust.fOutputConnections.length; i++) {
-                for (var j = 0; j < moduleDestination.moduleFaust.fInputConnections.length; j++) {
-                    if (moduleSource.moduleFaust.fOutputConnections[i] == moduleDestination.moduleFaust.fInputConnections[j]) {
+            for (var i = 0; i < moduleSource.getOutputConnections().length; i++) {
+                for (var j = 0; j < moduleDestination.getInputConnections.length; j++) {
+                    if (moduleSource.getOutputConnections()[i] == moduleDestination.getInputConnections()[j]) {
                         return false;
                     }
                 }
@@ -964,303 +1060,13 @@ function updateAccInFaustCode(faustcode, name, newaccvalue) {
     new Message(name + Utilitary.messageRessource.errorAccSliderNotFound);
     return faustcode;
 }
-//Accelerometer Class
-/// <reference path="Utilitary.ts"/>
-/// <reference path="Modules/FaustInterface.ts"/>
-var Axis;
-(function (Axis) {
-    Axis[Axis["x"] = 0] = "x";
-    Axis[Axis["y"] = 1] = "y";
-    Axis[Axis["z"] = 2] = "z";
-})(Axis || (Axis = {}));
-;
-var Curve;
-(function (Curve) {
-    Curve[Curve["Up"] = 0] = "Up";
-    Curve[Curve["Down"] = 1] = "Down";
-    Curve[Curve["UpDown"] = 2] = "UpDown";
-    Curve[Curve["DownUp"] = 3] = "DownUp";
-})(Curve || (Curve = {}));
-;
-//object describing value off accelerometer metadata values.
-class AccMeta {
-}
-//Contains the info regarding the mapping of the FaustInterfaceControler and the accelerometer
-class AccelerometerSlider {
-    constructor(accParams) {
-        if (accParams != null) {
-            this.isEnabled = accParams.isEnabled;
-            this.acc = accParams.acc;
-            this.setAttributes(accParams.acc);
-            this.address = accParams.address;
-            this.min = accParams.min;
-            this.max = accParams.max;
-            this.init = accParams.init;
-            this.label = accParams.label;
-            this.isActive = Utilitary.isAccelerometerOn;
-        }
-    }
-    setAttributes(fMetaAcc) {
-        if (fMetaAcc != null) {
-            var arrayMeta = fMetaAcc.split(" ");
-            this.axis = parseInt(arrayMeta[0]);
-            this.curve = parseInt(arrayMeta[1]);
-            this.amin = parseInt(arrayMeta[2]);
-            this.amid = parseInt(arrayMeta[3]);
-            this.amax = parseInt(arrayMeta[4]);
-        }
-    }
-    setAttributesDetailed(axis, curve, min, mid, max) {
-        this.axis = axis;
-        this.curve = curve;
-        this.amin = min;
-        this.amid = mid;
-        this.amax = max;
-    }
-}
-//object responsible of storing all accelerometerSlider and propagate to them the accelerometer infos.
-class AccelerometerHandler {
-    // get Accelerometer value
-    getAccelerometerValue() {
-        if (window.DeviceMotionEvent) {
-            window.addEventListener("devicemotion", (event) => { this.propagate(event); }, false);
-        }
-        else {
-            // Browser doesn't support DeviceMotionEvent
-            console.log(Utilitary.messageRessource.noDeviceMotion);
-        }
-    }
-    // propagate the new x, y, z value of the accelerometer to the registred object
-    propagate(event) {
-        var x = event.accelerationIncludingGravity.x;
-        var y = event.accelerationIncludingGravity.y;
-        var z = event.accelerationIncludingGravity.z;
-        for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-            if (AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isActive && AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isEnabled) {
-                this.axisSplitter(AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider, x, y, z, this.applyNewValueToModule);
-            }
-        }
-        // update the faustInterfaceControler of the AccelerometerEditView
-        if (AccelerometerHandler.faustInterfaceControlerEdit != null) {
-            this.axisSplitter(AccelerometerHandler.faustInterfaceControlerEdit.accelerometerSlider, x, y, z, this.applyValueToEdit);
-        }
-    }
-    //create and register accelerometerSlide
-    static registerAcceleratedSlider(accParams, faustInterfaceControler, sliderEdit) {
-        var accelerometerSlide = new AccelerometerSlider(accParams);
-        faustInterfaceControler.accelerometerSlider = accelerometerSlide;
-        AccelerometerHandler.curveSplitter(accelerometerSlide);
-        if (sliderEdit) {
-            AccelerometerHandler.faustInterfaceControlerEdit = faustInterfaceControler;
-        }
-        else {
-            AccelerometerHandler.faustInterfaceControler.push(faustInterfaceControler);
-        }
-    }
-    //give the good axis value to the accelerometerslider, convert it to the faust value before
-    axisSplitter(accelerometerSlide, x, y, z, callBack) {
-        switch (accelerometerSlide.axis) {
-            case Axis.x:
-                var newVal = accelerometerSlide.converter.uiToFaust(x);
-                callBack(accelerometerSlide, newVal, x);
-                break;
-            case Axis.y:
-                var newVal = accelerometerSlide.converter.uiToFaust(y);
-                callBack(accelerometerSlide, newVal, y);
-                break;
-            case Axis.z:
-                var newVal = accelerometerSlide.converter.uiToFaust(z);
-                callBack(accelerometerSlide, newVal, z);
-                break;
-        }
-    }
-    //update value of the dsp
-    applyNewValueToModule(accSlid, newVal, axeValue) {
-        accSlid.callbackValueChange(accSlid.address, newVal);
-    }
-    //update value of the edit range in AccelerometerEditView
-    applyValueToEdit(accSlid, newVal, axeValue) {
-        AccelerometerHandler.faustInterfaceControlerEdit.faustInterfaceView.slider.value = axeValue.toString();
-    }
-    //Apply the right converter with the right curve to an accelerometerSlider
-    static curveSplitter(accelerometerSlide) {
-        switch (accelerometerSlide.curve) {
-            case Curve.Up:
-                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.Down:
-                accelerometerSlide.converter = new AccDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.UpDown:
-                accelerometerSlide.converter = new AccUpDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.DownUp:
-                accelerometerSlide.converter = new AccDownUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            default:
-                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-        }
-    }
-}
-//array containing all the FaustInterfaceControler of the scene
-AccelerometerHandler.faustInterfaceControler = [];
-//faustInterfaceControler of the AccelerometerEditView
-AccelerometerHandler.faustInterfaceControlerEdit = null;
-/***************************************************************************************
-********************  Converter objects use to map acc and faust value *****************
-****************************************************************************************/
-class MinMaxClip {
-    constructor(x, y) {
-        this.fLo = Math.min(x, y);
-        this.fHi = Math.max(x, y);
-    }
-    clip(x) {
-        if (x < this.fLo) {
-            return this.fLo;
-        }
-        else if (x > this.fHi) {
-            return this.fHi;
-        }
-        else {
-            return x;
-        }
-    }
-}
-class Interpolator {
-    constructor(lo, hi, v1, v2) {
-        this.range = new MinMaxClip(lo, hi);
-        if (hi != lo) {
-            //regular case
-            this.fCoef = (v2 - v1) / (hi - lo);
-            this.fOffset = v1 - lo * this.fCoef;
-        }
-        else {
-            this.fCoef = 0;
-            this.fOffset = (v1 + v2) / 2;
-        }
-    }
-    returnMappedValue(v) {
-        var x = this.range.clip(v);
-        return this.fOffset + x * this.fCoef;
-    }
-    getLowHigh(amin, amax) {
-        return { amin: this.range.fLo, amax: this.range.fHi };
-    }
-}
-class Interpolator3pt {
-    constructor(lo, mid, hi, v1, vMid, v2) {
-        this.fSegment1 = new Interpolator(lo, mid, v1, vMid);
-        this.fSegment2 = new Interpolator(mid, hi, vMid, v2);
-        this.fMiddle = mid;
-    }
-    returnMappedValue(x) {
-        return (x < this.fMiddle) ? this.fSegment1.returnMappedValue(x) : this.fSegment2.returnMappedValue(x);
-    }
-    getMappingValues(amin, amid, amax) {
-        var lowHighSegment1 = this.fSegment1.getLowHigh(amin, amid);
-        var lowHighSegment2 = this.fSegment2.getLowHigh(amid, amax);
-        return { amin: lowHighSegment1.amin, amid: lowHighSegment2.amin, amax: lowHighSegment2.amax };
-    }
-}
-class AccUpConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmid, fmax);
-        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amin, amid, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, init, max);
-        this.faustToAcc = new Interpolator3pt(min, init, max, amin, amid, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccDownConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmid, fmin);
-        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amax, amid, amin);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, init, min);
-        this.faustToAcc = new Interpolator3pt(min, init, max, amax, amid, amin);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccUpDownConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmax, fmin);
-        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, max, min);
-        this.faustToAcc = new Interpolator(min, max, amin, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccDownUpConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmin, fmax);
-        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, min, max);
-        this.faustToAcc = new Interpolator(min, max, amin, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-/// <reference path="../Accelerometer.ts"/>
 /// <reference path="../Utilitary.ts"/>
 class FaustInterfaceControler {
     constructor(interfaceCallback, setDSPValueCallback) {
         this.accDefault = "0 0 -10 0 10";
         this.interfaceCallback = interfaceCallback;
         this.setDSPValueCallback = setDSPValueCallback;
+        this.valueChangeCallbacks = {};
     }
     //parse interface json from faust webaudio-asm-wrapper to create corresponding FaustInterfaceControler
     parseFaustJsonUI(ui, module) {
@@ -1346,6 +1152,9 @@ class FaustInterfaceControler {
             else if (this.faustInterfaceView.type === "checkbox") {
                 return this.faustInterfaceView.addFaustCheckBox(this.itemParam.init);
             }
+            else if (this.faustInterfaceView.type === "midilabel") {
+                return this.faustInterfaceView.addFaustMidiLabel(this.itemParam);
+            }
         }
     }
     // Set eventListner of the faustInterfaceView
@@ -1383,68 +1192,25 @@ class FaustInterfaceControler {
             }
         }
     }
-    //attach acceleromterSlider to faustInterfaceControler
-    //give the acc or noacc values
-    //if no accelerometer value, it create a default noacc one
-    createAccelerometer() {
-        if (this.itemParam.meta) {
-            var meta = this.itemParam.meta;
-            for (var i = 0; i < meta.length; i++) {
-                if (meta[i].acc) {
-                    this.acc = meta[i].acc;
-                    this.accParams.acc = this.acc;
-                    this.accParams.isEnabled = true;
-                    AccelerometerHandler.registerAcceleratedSlider(this.accParams, this);
-                    this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value); };
-                    this.accelerometerSlider.isEnabled = true;
-                    this.faustInterfaceView.slider.classList.add("allowed");
-                    this.faustInterfaceView.group.classList.add(Axis[this.accelerometerSlider.axis]);
-                    if (Utilitary.isAccelerometerOn) {
-                        this.accelerometerSlider.isActive = true;
-                        this.faustInterfaceView.slider.classList.remove("allowed");
-                        this.faustInterfaceView.slider.classList.add("not-allowed");
-                        this.faustInterfaceView.slider.disabled = true;
-                    }
-                }
-                else if (meta[i].noacc) {
-                    this.acc = meta[i].noacc;
-                    this.accParams.acc = this.acc;
-                    this.accParams.isEnabled = false;
-                    AccelerometerHandler.registerAcceleratedSlider(this.accParams, this);
-                    this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value); };
-                    this.accelerometerSlider.isEnabled = false;
-                    this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc");
-                }
-            }
-            if (this.accelerometerSlider == undefined) {
-                this.acc = this.accDefault;
-                this.accParams.acc = this.acc;
-                this.accParams.isEnabled = false;
-                AccelerometerHandler.registerAcceleratedSlider(this.accParams, this);
-                this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value); };
-                this.accelerometerSlider.isEnabled = false;
-                if (this.faustInterfaceView.slider != undefined) {
-                    this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc");
-                }
-            }
-        }
-        else {
-            this.acc = this.accDefault;
-            this.accParams.acc = this.acc;
-            this.accParams.isEnabled = false;
-            AccelerometerHandler.registerAcceleratedSlider(this.accParams, this);
-            this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value); };
-            this.accelerometerSlider.isEnabled = false;
-            if (this.faustInterfaceView.slider != undefined) {
-                this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc");
-            }
-        }
-    }
     //callback to update the dsp value
     callbackValueChange(address, value) {
         this.setDSPValueCallback(address, String(value));
         this.faustInterfaceView.slider.value = String((value - parseFloat(this.itemParam.min)) / parseFloat(this.itemParam.step));
         this.faustInterfaceView.output.textContent = String(value.toFixed(parseFloat(this.precision)));
+    }
+    static addButton(name, callback) {
+        var itemElement = { name: name, type: "button", label: name };
+        var controler = new FaustInterfaceControler((faustInterface) => { callback(); }, (adress, value) => { });
+        controler.itemParam = itemElement;
+        controler.value = "0";
+        return controler;
+    }
+    static addMidiLabel(name, callback) {
+        var itemElement = { name: name, type: "midilabel", label: name };
+        var controler = new FaustInterfaceControler((faustInterface) => { callback(); }, (adress, value) => { });
+        controler.itemParam = itemElement;
+        controler.value = "0";
+        return controler;
     }
 }
 /********************************************************************
@@ -1459,6 +1225,7 @@ class FaustInterfaceView {
         group.className = "control-group";
         var info = document.createElement("div");
         info.className = "slider-info";
+        info.setAttribute("parameter_address", itemParam.address);
         info.setAttribute("min", itemParam.min);
         info.setAttribute("max", itemParam.max);
         info.setAttribute("step", itemParam.step);
@@ -1471,6 +1238,22 @@ class FaustInterfaceView {
         var val = document.createElement("span");
         val.className = "value";
         this.output = val;
+        this.inputNode = document.createElement("div");
+        this.inputNode.className = "parameter-node  parameter-node-input";
+        this.inputNode.draggable = false;
+        let spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.inputNode.appendChild(spanNode);
+        group.appendChild(this.inputNode);
+        this.outputNode = document.createElement("div");
+        this.outputNode.className = "parameter-node  parameter-node-output";
+        this.outputNode.draggable = false;
+        spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.outputNode.appendChild(spanNode);
+        group.appendChild(this.outputNode);
         var myValue = Number(itemParam.init).toFixed(precision);
         val.appendChild(document.createTextNode("" + myValue + " " + unit));
         val.setAttribute("units", unit);
@@ -1510,6 +1293,38 @@ class FaustInterfaceView {
         group.appendChild(button);
         return button;
     }
+    addFaustTextInput(itemParam) {
+        var group = document.createElement("div");
+        var button = document.createElement("input");
+        button.type = "text";
+        this.button = button;
+        this.button.value = itemParam.label;
+        group.appendChild(button);
+        return button;
+    }
+    addFaustMidiLabel(itemParam) {
+        var group = document.createElement("div");
+        group.className = "control-group";
+        var info = document.createElement("div");
+        info.className = "slider-info";
+        info.setAttribute("instrument_id", itemParam.label);
+        var lab = document.createElement("span");
+        lab.className = "label";
+        lab.appendChild(document.createTextNode(itemParam.label));
+        this.label = lab;
+        info.appendChild(lab);
+        this.outputNode = document.createElement("div");
+        this.outputNode.className = "parameter-node parameter-node-output midi-node-output";
+        this.outputNode.draggable = false;
+        let spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.outputNode.appendChild(spanNode);
+        group.appendChild(this.outputNode);
+        group.appendChild(info);
+        this.group = group;
+        return group;
+    }
 }
 /// <reference path="../Connect.ts"/>
 /*MODULEFAUST.JS
@@ -1518,9 +1333,16 @@ class ModuleFaust {
     constructor(name) {
         this.fOutputConnections = [];
         this.fInputConnections = [];
+        this.pOutputConnections = [];
+        this.pInputConnections = [];
         this.recallOutputsDestination = [];
         this.recallInputsSource = [];
         this.fName = name;
+    }
+    getBaseAdressPath() {
+        let p = this.fDSP.inputs_items[0].split("/");
+        p.pop();
+        return p.join("/");
     }
     /*************** ACTIONS ON IN/OUTPUT MODULES ***************************/
     // ------ Returns Connection Array OR null if there are none
@@ -1541,6 +1363,18 @@ class ModuleFaust {
     }
     removeInputConnection(connector) {
         this.fInputConnections.splice(this.fInputConnections.indexOf(connector), 1);
+    }
+    addParameterOutputConnection(connector) {
+        this.pOutputConnections.push(connector);
+    }
+    addParameterInputConnection(connector) {
+        this.pInputConnections.push(connector);
+    }
+    removeParameterOutputConnection(connector) {
+        this.pOutputConnections.splice(this.pOutputConnections.indexOf(connector), 1);
+    }
+    removeParameterInputConnection(connector) {
+        this.pInputConnections.splice(this.pInputConnections.indexOf(connector), 1);
     }
     /********************** GET/SET SOURCE/NAME/DSP ***********************/
     setSource(code) {
@@ -1568,6 +1402,21 @@ class ModuleFaust {
 class ModuleView {
     constructor() {
         this.inputOutputNodeDimension = 32;
+        // setParameterInputNodes(inputs): void {
+        //     let numInputs = inputs.size();
+        //     for(let i = 0; i<inputs.size(); i++){
+        //         let node = inputs[i]
+        //         let tempNode = document.createElement("div");
+        //         tempNode.className = "parameter-node  parameter-node-input";
+        //         tempNode.draggable = false;
+        //         let spanNode: HTMLSpanElement = document.createElement("span");
+        //         spanNode.draggable = false;
+        //         spanNode.className = "node-button";
+        //         tempNode.appendChild(spanNode);
+        //         this.fModuleContainer.appendChild(tempNode);
+        //         this.fParameterInputNodes.push(tempNode)
+        //     }
+        // }
     }
     createModuleView(ID, x, y, name, htmlParent) {
         //------- GRAPHICAL ELEMENTS OF MODULE
@@ -1663,6 +1512,16 @@ class ModuleView {
         this.fOutputNode.appendChild(spanNode);
         this.fModuleContainer.appendChild(this.fOutputNode);
     }
+    setMidiNode() {
+        this.fMidiNode = document.createElement("div");
+        this.fMidiNode.className = "node node-input midi-input";
+        this.fMidiNode.draggable = false;
+        var spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.fMidiNode.appendChild(spanNode);
+        this.fModuleContainer.appendChild(this.fMidiNode);
+    }
     deleteInputOutputNodes() {
         if (this.fInputNode) {
             this.fModuleContainer.removeChild(this.fInputNode);
@@ -1693,7 +1552,7 @@ class ModuleView {
     }
 }
 /*				MODULECLASS.JS
-    HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
+HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
 
 */
 /// <reference path="../Dragging.ts"/>
@@ -1703,23 +1562,24 @@ class ModuleView {
 /// <reference path="../Messages.ts"/>
 /// <reference path="ModuleFaust.ts"/>
 /// <reference path="ModuleView.ts"/>
-class ModuleClass {
-    constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack, compileFaust) {
+class GraphicalModule {
+    constructor(id, x, y, name, htmlElementModuleContainer) {
         //drag object to handle dragging of module and connection
         this.drag = new Drag();
         this.dragList = [];
         this.moduleControles = [];
         this.fModuleInterfaceParams = {};
         this.eventConnectorHandler = (event) => { this.dragCnxCallback(event, this); };
-        this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
         this.eventOpenEditHandler = () => { this.edit(); };
-        this.compileFaust = compileFaust;
-        this.deleteCallback = removeModuleCallBack;
         this.eventDraggingHandler = (event) => { this.dragCallback(event, this); };
+        this.typeString = "abstract";
         this.moduleView = new ModuleView();
         this.moduleView.createModuleView(id, x, y, name, htmlElementModuleContainer);
-        this.moduleFaust = new ModuleFaust(name);
         this.addEvents();
+        this.moduleFaust = new ModuleFaust(name);
+    }
+    getType() {
+        return this.typeString;
     }
     //add all event listener to the moduleView
     addEvents() {
@@ -1750,7 +1610,7 @@ class ModuleClass {
             this.moduleView.fEditImg.addEventListener("touchend", this.eventOpenEditHandler);
         }
     }
-    /***************  PRIVATE METHODS  ******************************/
+    /***************  protected METHODS  ******************************/
     dragCallback(event, module) {
         if (event.type == "mousedown") {
             module.drag.getDraggingMouseEvent(event, module, (el, x, y, module, e) => { module.drag.startDraggingModule(el, x, y, module, e); });
@@ -1809,19 +1669,13 @@ class ModuleClass {
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
-    console.log("deleteModule");
-        var connector = new Connector();
-        connector.disconnectModule(this);
+        // var connector: Connector = new Connector()
+        // connector.disconnectModule(this);
         this.deleteFaustInterface();
         // Then delete the visual element
         if (this.moduleView) {
             this.moduleView.fModuleContainer.parentNode.removeChild(this.moduleView.fModuleContainer);
         }
-        this.deleteDSP(this.moduleFaust.fDSP);
-        this.moduleFaust.fDSP = null;
-        faust.deleteDSPFactory(this.moduleFaust.factory);
-        this.moduleFaust.factory = null;
-        this.deleteCallback(this);
     }
     //make module smaller
     minModule() {
@@ -1841,22 +1695,252 @@ class ModuleClass {
         Connector.redrawInputConnections(this, this.drag);
         Connector.redrawOutputConnections(this, this.drag);
     }
+    /******************** EDIT SOURCE & RECOMPILE *************************/
+    edit() {
+    }
+    //---- Update ModuleClass with new name/code source
+    update(name, code) {
+    }
+    /***************** CREATE/DELETE the DSP Interface ********************/
+    // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
+    setFaustInterfaceControles() {
+        // //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
+        // var moduleFaustInterface = new FaustInterfaceControler(
+        //     (faustInterface) => { this.interfaceSliderCallback(faustInterface) },
+        //     (adress, value) => { this.setParamValue(adress, value) }
+        //     );
+        //     //let ui_json = JSON.parse(this.moduleFaust.fDSP.getJSON())
+        //     //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(ui_json).ui, this);
+    }
+    // Delete all FaustInterfaceControler
+    deleteFaustInterface() {
+        while (this.moduleView.fInterfaceContainer.childNodes.length != 0) {
+            this.moduleView.fInterfaceContainer.removeChild(this.moduleView.fInterfaceContainer.childNodes[0]);
+        }
+    }
+    // Create FaustInterfaceControler, set its callback and add 
+    createFaustInterface() {
+        for (var i = 0; i < this.moduleControles.length; i++) {
+            var faustInterfaceControler = this.moduleControles[i];
+            let type = faustInterfaceControler.itemParam.type;
+            faustInterfaceControler.setParams();
+            faustInterfaceControler.faustInterfaceView = new FaustInterfaceView(type);
+            this.moduleView.getInterfaceContainer().appendChild(faustInterfaceControler.createFaustInterfaceElement());
+            // faustInterfaceControler.interfaceCallback = this.interfaceSliderCallback.bind(this);
+            if (type === "vslider" || type == "hslider") {
+                faustInterfaceControler.faustInterfaceView.inputNode.addEventListener("mousedown", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.inputNode.addEventListener("touchstart", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.inputNode.addEventListener("touchmove", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.inputNode.addEventListener("touchend", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("mousedown", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchstart", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchmove", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchend", this.eventConnectorHandler);
+            }
+            if (type === "midilabel") {
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("mousedown", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchstart", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchmove", this.eventConnectorHandler);
+                faustInterfaceControler.faustInterfaceView.outputNode.addEventListener("touchend", this.eventConnectorHandler);
+            }
+            faustInterfaceControler.setEventListener();
+        }
+    }
+    //---- Generic callback for Faust Interface
+    //---- Called every time an element of the UI changes value
+    interfaceSliderCallback(faustControler) {
+        var val;
+        if (faustControler.faustInterfaceView.slider) {
+            var input = faustControler.faustInterfaceView.slider;
+            val = Number((parseFloat(input.value) * parseFloat(faustControler.itemParam.step)) + parseFloat(faustControler.itemParam.min)).toFixed(parseFloat(faustControler.precision));
+        }
+        else if (faustControler.faustInterfaceView.button) {
+            var input = faustControler.faustInterfaceView.button;
+            if (faustControler.value == undefined || faustControler.value == "0") {
+                faustControler.value = val = "1";
+            }
+            else {
+                faustControler.value = val = "0";
+            }
+        }
+        var text = faustControler.itemParam.address;
+        faustControler.value = val;
+        var output = faustControler.faustInterfaceView.output;
+        //---- update the value text
+        if (output)
+            output.textContent = "" + val + " " + faustControler.unit;
+        // 	Search for DSP then update the value of its parameter.
+        this.setParamValue(text, val);
+        for (var address in faustControler.valueChangeCallbacks) {
+            let cb = faustControler.valueChangeCallbacks[address];
+            cb(address, val);
+        }
+    }
+    interfaceButtonCallback(faustControler, val) {
+        var text = faustControler.itemParam.address;
+        faustControler.value = val.toString();
+        var output = faustControler.faustInterfaceView.output;
+        //---- update the value text
+        if (output)
+            output.textContent = "" + val + " " + faustControler.unit;
+        // 	Search for DSP then update the value of its parameter.
+        this.setParamValue(text, val.toString());
+    }
+    // Save graphical parameters of a Faust Node
+    saveInterfaceParams() {
+        var controls = this.moduleControles;
+        for (var j = 0; j < controls.length; j++) {
+            var text = controls[j].itemParam.address;
+            this.fModuleInterfaceParams[text] = controls[j].value;
+        }
+    }
+    recallInterfaceParams() {
+        for (var key in this.fModuleInterfaceParams)
+            this.setParamValue(key, this.fModuleInterfaceParams[key]);
+    }
+    getInterfaceParams() {
+        return this.fModuleInterfaceParams;
+    }
+    setInterfaceParams(parameters) {
+        this.fModuleInterfaceParams = parameters;
+    }
+    addInterfaceParam(path, value) {
+        this.fModuleInterfaceParams[path] = value.toString();
+    }
+    /******************* GET/SET INPUT/OUTPUT NODES **********************/
+    addInputOutputNodes() {
+        if (this.getNumInputs() > 0 && this.moduleView.fName != "input") {
+            this.moduleView.setInputNode();
+            this.moduleView.fInputNode.addEventListener("mousedown", this.eventConnectorHandler);
+            this.moduleView.fInputNode.addEventListener("touchstart", this.eventConnectorHandler);
+            this.moduleView.fInputNode.addEventListener("touchmove", this.eventConnectorHandler);
+            this.moduleView.fInputNode.addEventListener("touchend", this.eventConnectorHandler);
+        }
+        if (this.getNumOutputs() > 0 && this.moduleView.fName != "output") {
+            this.moduleView.setOutputNode();
+            this.moduleView.fOutputNode.addEventListener("mousedown", this.eventConnectorHandler);
+            this.moduleView.fOutputNode.addEventListener("touchstart", this.eventConnectorHandler);
+            this.moduleView.fOutputNode.addEventListener("touchmove", this.eventConnectorHandler);
+            this.moduleView.fOutputNode.addEventListener("touchend", this.eventConnectorHandler);
+        }
+    }
+    /******************* GET/SET INPUT/OUTPUT NODES **********************/
+    addMidiControlNode() {
+        this.moduleView.setMidiNode();
+        this.moduleView.fMidiNode.addEventListener("mousedown", this.eventConnectorHandler);
+        this.moduleView.fMidiNode.addEventListener("touchstart", this.eventConnectorHandler);
+        this.moduleView.fMidiNode.addEventListener("touchmove", this.eventConnectorHandler);
+        this.moduleView.fMidiNode.addEventListener("touchend", this.eventConnectorHandler);
+    }
+    //manage style of node when touchover will dragging
+    //make the use easier for connections
+    styleInputNodeTouchDragOver(el) {
+        el.style.border = "15px double rgb(0, 211, 255)";
+        el.style.left = "-32px";
+        el.style.marginTop = "-32px";
+        ModuleClass.isNodesModuleUnstyle = false;
+    }
+    styleOutputNodeTouchDragOver(el) {
+        el.style.border = "15px double rgb(0, 211, 255)";
+        el.style.right = "-32px";
+        el.style.marginTop = "-32px";
+        ModuleClass.isNodesModuleUnstyle = false;
+    }
+    //function for children to overide to handle setting parameters/outputs/connections from gui
+    setParamValue(text, val) {
+        console.log("IMPLEMENT ME");
+    }
+    externalSetParamValue(text, val) {
+        console.log("IMPLEMENT ME");
+    }
+    getNumInputs() {
+        return 0;
+    }
+    getNumOutputs() {
+        return 0;
+    }
+    getInputConnections() {
+        return this.moduleFaust.fInputConnections;
+    }
+    getOutputConnections() {
+        return this.moduleFaust.fOutputConnections;
+    }
+    getInputParameterConnections() {
+        return this.moduleFaust.pInputConnections;
+    }
+    getOutputParameterConnections() {
+        return this.moduleFaust.pOutputConnections;
+    }
+}
+GraphicalModule.isNodesModuleUnstyle = true;
+/*				MODULECLASS.JS
+    HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
+
+*/
+/// <reference path="../Dragging.ts"/>
+/// <reference path="../CodeFaustParser.ts"/>
+/// <reference path="../Connect.ts"/>
+/// <reference path="../Modules/FaustInterface.ts"/>
+/// <reference path="../Messages.ts"/>
+/// <reference path="ModuleFaust.ts"/>
+/// <reference path="ModuleView.ts"/>
+/// <reference path="GraphicalModule.ts"/>
+class ModuleClass extends GraphicalModule {
+    constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack, compileFaust) {
+        super(id, x, y, name, htmlElementModuleContainer);
+        this.fModuleInterfaceParams = {};
+        this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
+        this.eventOpenEditHandler = () => { this.edit(); };
+        this.isPoly = false;
+        this.compileFaust = compileFaust;
+        this.deleteCallback = removeModuleCallBack;
+        // this.moduleFaust = new ModuleFaust(name);
+        this.typeString = "dsp";
+    }
+    /*******************************  PUBLIC METHODS  **********************************/
+    deleteModule() {
+        var connector = new Connector();
+        connector.disconnectModule(this);
+        super.deleteModule();
+        this.deleteDSP(this.moduleFaust.fDSP);
+        this.moduleFaust.fDSP = null;
+        faust.deleteDSPFactory(this.moduleFaust.factory);
+        this.moduleFaust.factory = null;
+        this.deleteCallback(this);
+    }
     //--- Create and Update are called once a source code is compiled and the factory exists
     createDSP(factory, callback) {
         this.moduleFaust.factory = factory;
+        this.isPoly = factory.isPoly;
         try {
             if (factory != null) {
                 var moduleFaust = this.moduleFaust;
-                faust.createDSPInstance(factory, Utilitary.audioContext, 1024, function (dsp) {
-                    if (dsp != null) {
-                        moduleFaust.fDSP = dsp;
-                        callback();
-                    }
-                    else {
-                        new Message(Utilitary.messageRessource.errorCreateDSP);
-                        Utilitary.hideFullPageLoading();
-                    }
-                });
+                //let options = moduleFaust.factory.factory.json_object.meta;
+                //todo: make poly work
+                if (this.isPoly) {
+                    faust.createPolyDSPInstance(factory, Utilitary.audioContext, 1024, 16, function (dsp) {
+                        if (dsp != null) {
+                            moduleFaust.fDSP = dsp;
+                            callback();
+                        }
+                        else {
+                            new Message(Utilitary.messageRessource.errorCreateDSP);
+                            Utilitary.hideFullPageLoading();
+                        }
+                    });
+                }
+                else {
+                    faust.createDSPInstance(factory, Utilitary.audioContext, 1024, function (dsp) {
+                        if (dsp != null) {
+                            moduleFaust.fDSP = dsp;
+                            callback();
+                        }
+                        else {
+                            new Message(Utilitary.messageRessource.errorCreateDSP);
+                            Utilitary.hideFullPageLoading();
+                        }
+                    });
+                }
                 // To activate the AudioWorklet mode
                 //faust.createDSPWorkletInstance(factory, Utilitary.audioContext, function(dsp) { moduleFaust.fDSP = dsp; callback(); });
             }
@@ -1868,6 +1952,17 @@ class ModuleClass {
             new Message(Utilitary.messageRessource.errorCreateDSP + " : " + e);
             Utilitary.hideFullPageLoading();
         }
+    }
+    // public midiControl(channel, pitch, velocity ){
+    //     console.log("Received midi control " )
+    //     this.moduleFaust.fDSP.keyOn(channel, pitch, velocity)
+    // }
+    midiControl(midiInfo) {
+        console.log("Received midi control ");
+        var base = this.moduleFaust.getBaseAdressPath();
+        this.externalSetParamValue(base + '/freq', "" + AudioUtils.midiToFreq(midiInfo.note), true);
+        this.externalSetParamValue(base + '/gain', "" + AudioUtils.normalizeVelocity(midiInfo.note), true);
+        this.moduleFaust.fDSP.keyOn(midiInfo.channel, midiInfo.note, midiInfo.velocity);
     }
     //--- Update DSP in module
     updateDSP(factory, module) {
@@ -1904,11 +1999,13 @@ class ModuleClass {
             Utilitary.hideFullPageLoading();
         });
     }
+    //Todo make poly work
     deleteDSP(todelete) {
         if (todelete)
             faust.deleteDSPInstance(todelete);
     }
     /******************** EDIT SOURCE & RECOMPILE *************************/
+    //OVERRIDE
     edit() {
         this.saveInterfaceParams();
         var event = new CustomEvent("codeeditevent");
@@ -1931,7 +2028,7 @@ class ModuleClass {
         this.moduleFaust.fTempName = name;
         this.moduleFaust.fTempSource = code;
         var module = this;
-        this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module); } });
+        this.compileFaust({ isPoly: this.isPoly, name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module); } });
     }
     //---- React to recompilation triggered by click on icon
     recompileSource(event, module) {
@@ -1950,41 +2047,15 @@ class ModuleClass {
     }
     /***************** CREATE/DELETE the DSP Interface ********************/
     // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
+    //Override
     setFaustInterfaceControles() {
         this.moduleView.fTitle.textContent = this.moduleFaust.fName;
         var moduleFaustInterface = new FaustInterfaceControler((faustInterface) => { this.interfaceSliderCallback(faustInterface); }, (adress, value) => { this.moduleFaust.fDSP.setParamValue(adress, value); });
         this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.moduleFaust.fDSP.getJSON()).ui, this);
     }
-    // Create FaustInterfaceControler, set its callback and add its AccelerometerSlider
-    createFaustInterface() {
-        for (var i = 0; i < this.moduleControles.length; i++) {
-            var faustInterfaceControler = this.moduleControles[i];
-            faustInterfaceControler.setParams();
-            faustInterfaceControler.faustInterfaceView = new FaustInterfaceView(faustInterfaceControler.itemParam.type);
-            this.moduleView.getInterfaceContainer().appendChild(faustInterfaceControler.createFaustInterfaceElement());
-            faustInterfaceControler.interfaceCallback = this.interfaceSliderCallback.bind(this);
-            faustInterfaceControler.updateFaustCodeCallback = this.updateCodeFaust.bind(this);
-            faustInterfaceControler.setEventListener();
-            faustInterfaceControler.createAccelerometer();
-        }
-    }
     // Delete all FaustInterfaceControler
     deleteFaustInterface() {
-        this.deleteAccelerometerRef();
-        while (this.moduleView.fInterfaceContainer.childNodes.length != 0) {
-            this.moduleView.fInterfaceContainer.removeChild(this.moduleView.fInterfaceContainer.childNodes[0]);
-        }
-    }
-    // Remove AccelerometerSlider ref from AccelerometerHandler
-    deleteAccelerometerRef() {
-        for (var i = 0; i < this.moduleControles.length; i++) {
-            if (this.moduleControles[i].accelerometerSlider != null && this.moduleControles[i].accelerometerSlider != undefined) {
-                var index = AccelerometerHandler.faustInterfaceControler.indexOf(this.moduleControles[i]);
-                AccelerometerHandler.faustInterfaceControler.splice(index, 1);
-                delete this.moduleControles[i].accelerometerSlider;
-            }
-        }
-        this.moduleControles = [];
+        super.deleteFaustInterface();
     }
     // set DSP value to all FaustInterfaceControlers
     setDSPValue() {
@@ -2002,101 +2073,956 @@ class ModuleClass {
         var s = updateAccInFaustCode(this.moduleFaust.fSource, details.sliderName, m);
         this.moduleFaust.fSource = s;
     }
-    //---- Generic callback for Faust Interface
-    //---- Called every time an element of the UI changes value
-    interfaceSliderCallback(faustControler) {
-        var val;
-        if (faustControler.faustInterfaceView.slider) {
-            var input = faustControler.faustInterfaceView.slider;
-            val = Number((parseFloat(input.value) * parseFloat(faustControler.itemParam.step)) + parseFloat(faustControler.itemParam.min)).toFixed(parseFloat(faustControler.precision));
+    //Function overrides
+    getNumInputs() {
+        if (this.isPoly) {
+            return 1;
         }
-        else if (faustControler.faustInterfaceView.button) {
-            var input = faustControler.faustInterfaceView.button;
-            if (faustControler.value == undefined || faustControler.value == "0") {
-                faustControler.value = val = "1";
-            }
-            else {
-                faustControler.value = val = "0";
-            }
-        }
-        var text = faustControler.itemParam.address;
-        faustControler.value = val;
-        var output = faustControler.faustInterfaceView.output;
-        //---- update the value text
-        if (output)
-            output.textContent = "" + val + " " + faustControler.unit;
-        // 	Search for DSP then update the value of its parameter.
+        return this.moduleFaust.fDSP.getNumInputs();
+    }
+    getNumOutputs() {
+        return this.moduleFaust.fDSP.getNumOutputs();
+    }
+    setParamValue(text, val) {
         this.moduleFaust.fDSP.setParamValue(text, val);
     }
-    interfaceButtonCallback(faustControler, val) {
-        var text = faustControler.itemParam.address;
-        faustControler.value = val.toString();
-        var output = faustControler.faustInterfaceView.output;
-        //---- update the value text
-        if (output)
-            output.textContent = "" + val + " " + faustControler.unit;
-        // 	Search for DSP then update the value of its parameter.
-        this.moduleFaust.fDSP.setParamValue(text, val.toString());
-    }
-    // Save graphical parameters of a Faust Node
-    saveInterfaceParams() {
-        var controls = this.moduleControles;
-        for (var j = 0; j < controls.length; j++) {
-            var text = controls[j].itemParam.address;
-            this.fModuleInterfaceParams[text] = controls[j].value;
+    externalSetParamValue(address, val, interfaceOnly = false) {
+        var controller;
+        var iParam;
+        for (let i = 0; i < this.moduleControles.length; i++) {
+            let mod = this.moduleControles[i];
+            if (mod.itemParam.address == address) {
+                controller = mod;
+                iParam = mod.itemParam;
+            }
         }
-    }
-    recallInterfaceParams() {
-        for (var key in this.fModuleInterfaceParams)
-            this.moduleFaust.fDSP.setParamValue(key, this.fModuleInterfaceParams[key]);
-    }
-    getInterfaceParams() {
-        return this.fModuleInterfaceParams;
-    }
-    setInterfaceParams(parameters) {
-        this.fModuleInterfaceParams = parameters;
-    }
-    addInterfaceParam(path, value) {
-        this.fModuleInterfaceParams[path] = value.toString();
-    }
-    /******************* GET/SET INPUT/OUTPUT NODES **********************/
-    addInputOutputNodes() {
-        if (this.moduleFaust.fDSP.getNumInputs() > 0 && this.moduleView.fName != "input") {
-            this.moduleView.setInputNode();
-            this.moduleView.fInputNode.addEventListener("mousedown", this.eventConnectorHandler);
-            this.moduleView.fInputNode.addEventListener("touchstart", this.eventConnectorHandler);
-            this.moduleView.fInputNode.addEventListener("touchmove", this.eventConnectorHandler);
-            this.moduleView.fInputNode.addEventListener("touchend", this.eventConnectorHandler);
+        if (controller) {
+            controller.faustInterfaceView.slider.value = String((parseFloat(val) - parseFloat(iParam.min)) / parseFloat(iParam.step));
+            if (!interfaceOnly)
+                this.moduleFaust.fDSP.setParamValue(address, val);
+            //Propagate to other linked modules
+            for (var address in controller.valueChangeCallbacks) {
+                let cb = controller.valueChangeCallbacks[address];
+                cb(address, val, interfaceOnly);
+            }
         }
-        if (this.moduleFaust.fDSP.getNumOutputs() > 0 && this.moduleView.fName != "output") {
-            this.moduleView.setOutputNode();
-            this.moduleView.fOutputNode.addEventListener("mousedown", this.eventConnectorHandler);
-            this.moduleView.fOutputNode.addEventListener("touchstart", this.eventConnectorHandler);
-            this.moduleView.fOutputNode.addEventListener("touchmove", this.eventConnectorHandler);
-            this.moduleView.fOutputNode.addEventListener("touchend", this.eventConnectorHandler);
-        }
-    }
-    //manage style of node when touchover will dragging
-    //make the use easier for connections
-    styleInputNodeTouchDragOver(el) {
-        el.style.border = "15px double rgb(0, 211, 255)";
-        el.style.left = "-32px";
-        el.style.marginTop = "-32px";
-        ModuleClass.isNodesModuleUnstyle = false;
-    }
-    styleOutputNodeTouchDragOver(el) {
-        el.style.border = "15px double rgb(0, 211, 255)";
-        el.style.right = "-32px";
-        el.style.marginTop = "-32px";
-        ModuleClass.isNodesModuleUnstyle = false;
     }
 }
-ModuleClass.isNodesModuleUnstyle = true;
+/* Wrapper for accessing strings through sequential reads */
+function Stream(str) {
+    var position = 0;
+    function read(length) {
+        var result = str.substr(position, length);
+        position += length;
+        return result;
+    }
+    /* read a big-endian 32-bit integer */
+    function readInt32() {
+        var result = ((str.charCodeAt(position) << 24)
+            + (str.charCodeAt(position + 1) << 16)
+            + (str.charCodeAt(position + 2) << 8)
+            + str.charCodeAt(position + 3));
+        position += 4;
+        return result;
+    }
+    /* read a big-endian 16-bit integer */
+    function readInt16() {
+        var result = ((str.charCodeAt(position) << 8)
+            + str.charCodeAt(position + 1));
+        position += 2;
+        return result;
+    }
+    /* read an 8-bit integer */
+    function readInt8(signed) {
+        var result = str.charCodeAt(position);
+        if (signed && result > 127)
+            result -= 256;
+        position += 1;
+        return result;
+    }
+    function eof() {
+        return position >= str.length;
+    }
+    /* read a MIDI-style variable-length integer
+        (big-endian value in groups of 7 bits,
+        with top bit set to signify that another byte follows)
+    */
+    function readVarInt() {
+        var result = 0;
+        while (true) {
+            var b = readInt8(false);
+            if (b & 0x80) {
+                result += (b & 0x7f);
+                result <<= 7;
+            }
+            else {
+                /* b is the last byte */
+                return result + b;
+            }
+        }
+    }
+    return {
+        'eof': eof,
+        'read': read,
+        'readInt32': readInt32,
+        'readInt16': readInt16,
+        'readInt8': readInt8,
+        'readVarInt': readVarInt
+    };
+}
+/*
+class to parse the .mid file format
+(depends on stream.js)
+*/
+///
+/// <reference path="./stream.ts" />
+class MidiEvent {
+}
+;
+function MidiFile(data) {
+    function readChunk(stream) {
+        var id = stream.read(4);
+        var length = stream.readInt32();
+        return {
+            'id': id,
+            'length': length,
+            'data': stream.read(length)
+        };
+    }
+    var lastEventTypeByte;
+    function readEvent(stream) {
+        var event = new MidiEvent();
+        event.deltaTime = stream.readVarInt();
+        var eventTypeByte = stream.readInt8();
+        if ((eventTypeByte & 0xf0) == 0xf0) {
+            /* system / meta event */
+            if (eventTypeByte == 0xff) {
+                /* meta event */
+                event.type = 'meta';
+                var subtypeByte = stream.readInt8();
+                var length = stream.readVarInt();
+                switch (subtypeByte) {
+                    case 0x00:
+                        event.subtype = 'sequenceNumber';
+                        if (length != 2)
+                            throw "Expected length for sequenceNumber event is 2, got " + length;
+                        event.number = stream.readInt16();
+                        return event;
+                    case 0x01:
+                        event.subtype = 'text';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x02:
+                        event.subtype = 'copyrightNotice';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x03:
+                        event.subtype = 'trackName';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x04:
+                        event.subtype = 'instrumentName';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x05:
+                        event.subtype = 'lyrics';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x06:
+                        event.subtype = 'marker';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x07:
+                        event.subtype = 'cuePoint';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x20:
+                        event.subtype = 'midiChannelPrefix';
+                        if (length != 1)
+                            throw "Expected length for midiChannelPrefix event is 1, got " + length;
+                        event.channel = stream.readInt8();
+                        return event;
+                    case 0x2f:
+                        event.subtype = 'endOfTrack';
+                        if (length != 0)
+                            throw "Expected length for endOfTrack event is 0, got " + length;
+                        return event;
+                    case 0x51:
+                        event.subtype = 'setTempo';
+                        if (length != 3)
+                            throw "Expected length for setTempo event is 3, got " + length;
+                        event.microsecondsPerBeat = ((stream.readInt8() << 16)
+                            + (stream.readInt8() << 8)
+                            + stream.readInt8());
+                        return event;
+                    case 0x54:
+                        event.subtype = 'smpteOffset';
+                        if (length != 5)
+                            throw "Expected length for smpteOffset event is 5, got " + length;
+                        var hourByte = stream.readInt8();
+                        event.frameRate = {
+                            0x00: 24, 0x20: 25, 0x40: 29, 0x60: 30
+                        }[hourByte & 0x60];
+                        event.hour = hourByte & 0x1f;
+                        event.min = stream.readInt8();
+                        event.sec = stream.readInt8();
+                        event.frame = stream.readInt8();
+                        event.subframe = stream.readInt8();
+                        return event;
+                    case 0x58:
+                        event.subtype = 'timeSignature';
+                        if (length != 4)
+                            throw "Expected length for timeSignature event is 4, got " + length;
+                        event.numerator = stream.readInt8();
+                        event.denominator = Math.pow(2, stream.readInt8());
+                        event.metronome = stream.readInt8();
+                        event.thirtyseconds = stream.readInt8();
+                        return event;
+                    case 0x59:
+                        event.subtype = 'keySignature';
+                        if (length != 2)
+                            throw "Expected length for keySignature event is 2, got " + length;
+                        event.key = stream.readInt8(true);
+                        event.scale = stream.readInt8();
+                        return event;
+                    case 0x7f:
+                        event.subtype = 'sequencerSpecific';
+                        event.data = stream.read(length);
+                        return event;
+                    default:
+                        // console.log("Unrecognised meta event subtype: " + subtypeByte);
+                        event.subtype = 'unknown';
+                        event.data = stream.read(length);
+                        return event;
+                }
+                event.data = stream.read(length);
+                return event;
+            }
+            else if (eventTypeByte == 0xf0) {
+                event.type = 'sysEx';
+                var length = stream.readVarInt();
+                event.data = stream.read(length);
+                return event;
+            }
+            else if (eventTypeByte == 0xf7) {
+                event.type = 'dividedSysEx';
+                var length = stream.readVarInt();
+                event.data = stream.read(length);
+                return event;
+            }
+            else {
+                throw "Unrecognised MIDI event type byte: " + eventTypeByte;
+            }
+        }
+        else {
+            /* channel event */
+            var param1;
+            if ((eventTypeByte & 0x80) == 0) {
+                /* running status - reuse lastEventTypeByte as the event type.
+                    eventTypeByte is actually the first parameter
+                */
+                param1 = eventTypeByte;
+                eventTypeByte = lastEventTypeByte;
+            }
+            else {
+                param1 = stream.readInt8();
+                lastEventTypeByte = eventTypeByte;
+            }
+            var eventType = eventTypeByte >> 4;
+            event.channel = eventTypeByte & 0x0f;
+            event.type = 'channel';
+            switch (eventType) {
+                case 0x08:
+                    event.subtype = 'noteOff';
+                    event.noteNumber = param1;
+                    event.velocity = stream.readInt8();
+                    return event;
+                case 0x09:
+                    event.noteNumber = param1;
+                    event.velocity = stream.readInt8();
+                    if (event.velocity == 0) {
+                        event.subtype = 'noteOff';
+                    }
+                    else {
+                        event.subtype = 'noteOn';
+                    }
+                    return event;
+                case 0x0a:
+                    event.subtype = 'noteAftertouch';
+                    event.noteNumber = param1;
+                    event.amount = stream.readInt8();
+                    return event;
+                case 0x0b:
+                    event.subtype = 'controller';
+                    event.controllerType = param1;
+                    event.value = stream.readInt8();
+                    return event;
+                case 0x0c:
+                    event.subtype = 'programChange';
+                    event.programNumber = param1;
+                    return event;
+                case 0x0d:
+                    event.subtype = 'channelAftertouch';
+                    event.amount = param1;
+                    return event;
+                case 0x0e:
+                    event.subtype = 'pitchBend';
+                    event.value = param1 + (stream.readInt8() << 7);
+                    return event;
+                default:
+                    throw "Unrecognised MIDI event type: " + eventType;
+                /*
+                console.log("Unrecognised MIDI event type: " + eventType);
+                stream.readInt8();
+                event.subtype = 'unknown';
+                return event;
+                */
+            }
+        }
+    }
+    var stream = Stream(data);
+    var headerChunk = readChunk(stream);
+    if (headerChunk.id != 'MThd' || headerChunk.length != 6) {
+        throw "Bad .mid file - header not found";
+    }
+    var headerStream = Stream(headerChunk.data);
+    var formatType = headerStream.readInt16();
+    var trackCount = headerStream.readInt16();
+    var timeDivision = headerStream.readInt16();
+    if (timeDivision & 0x8000) {
+        throw "Expressing time division in SMTPE frames is not supported yet";
+    }
+    else {
+        var ticksPerBeat = timeDivision;
+    }
+    var header = {
+        'formatType': formatType,
+        'trackCount': trackCount,
+        'ticksPerBeat': ticksPerBeat
+    };
+    var tracks = [];
+    for (var i = 0; i < header.trackCount; i++) {
+        tracks[i] = [];
+        var trackChunk = readChunk(stream);
+        if (trackChunk.id != 'MTrk') {
+            throw "Unexpected chunk - expected MTrk, got " + trackChunk.id;
+        }
+        var trackStream = Stream(trackChunk.data);
+        while (!trackStream.eof()) {
+            var event = readEvent(trackStream);
+            tracks[i].push(event);
+            //console.log(event);
+        }
+    }
+    return {
+        'header': header,
+        'tracks': tracks
+    };
+}
+/// <reference path="./midifile.ts" />
+function clone(o) {
+    if (typeof o != 'object')
+        return (o);
+    if (o == null)
+        return (o);
+    var ret = (typeof o.length == 'number') ? [] : {};
+    for (var key in o)
+        ret[key] = clone(o[key]);
+    return ret;
+}
+;
+function Replayer(midiFile, timeWarp, eventProcessor, bpm) {
+    var trackStates = [];
+    var beatsPerMinute = bpm ? bpm : 120;
+    var bpmOverride = bpm ? true : false;
+    var ticksPerBeat = midiFile.header.ticksPerBeat;
+    for (var i = 0; i < midiFile.tracks.length; i++) {
+        trackStates[i] = {
+            'nextEventIndex': 0,
+            'ticksToNextEvent': (midiFile.tracks[i].length ?
+                midiFile.tracks[i][0].deltaTime :
+                null)
+        };
+    }
+    var nextEventInfo;
+    var samplesToNextEvent = 0;
+    function getNextEvent() {
+        var ticksToNextEvent = null;
+        var nextEventTrack = null;
+        var nextEventIndex = null;
+        for (var i = 0; i < trackStates.length; i++) {
+            if (trackStates[i].ticksToNextEvent != null
+                && (ticksToNextEvent == null || trackStates[i].ticksToNextEvent < ticksToNextEvent)) {
+                ticksToNextEvent = trackStates[i].ticksToNextEvent;
+                nextEventTrack = i;
+                nextEventIndex = trackStates[i].nextEventIndex;
+            }
+        }
+        if (nextEventTrack != null) {
+            /* consume event from that track */
+            var nextEvent = midiFile.tracks[nextEventTrack][nextEventIndex];
+            if (midiFile.tracks[nextEventTrack][nextEventIndex + 1]) {
+                trackStates[nextEventTrack].ticksToNextEvent += midiFile.tracks[nextEventTrack][nextEventIndex + 1].deltaTime;
+            }
+            else {
+                trackStates[nextEventTrack].ticksToNextEvent = null;
+            }
+            trackStates[nextEventTrack].nextEventIndex += 1;
+            /* advance timings on all tracks by ticksToNextEvent */
+            for (var i = 0; i < trackStates.length; i++) {
+                if (trackStates[i].ticksToNextEvent != null) {
+                    trackStates[i].ticksToNextEvent -= ticksToNextEvent;
+                }
+            }
+            return {
+                "ticksToEvent": ticksToNextEvent,
+                "event": nextEvent,
+                "track": nextEventTrack
+            };
+        }
+        else {
+            return null;
+        }
+    }
+    ;
+    //
+    var midiEvent;
+    var temporal = [];
+    //
+    function processEvents() {
+        function processNext() {
+            if (!bpmOverride && midiEvent.event.type == "meta" && midiEvent.event.subtype == "setTempo") {
+                // tempo change events can occur anywhere in the middle and affect events that follow
+                beatsPerMinute = 60000000 / midiEvent.event.microsecondsPerBeat;
+            }
+            ///
+            var beatsToGenerate = 0;
+            var secondsToGenerate = 0;
+            if (midiEvent.ticksToEvent > 0) {
+                beatsToGenerate = midiEvent.ticksToEvent / ticksPerBeat;
+                secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
+            }
+            ///
+            var time = (secondsToGenerate * 1000 * timeWarp) || 0;
+            temporal.push([midiEvent, time]);
+            midiEvent = getNextEvent();
+        }
+        ;
+        ///
+        if (midiEvent = getNextEvent()) {
+            while (midiEvent)
+                processNext();
+        }
+    }
+    ;
+    processEvents();
+    return {
+        "getData": function () {
+            return clone(temporal);
+        }
+    };
+}
+;
+/*
+Adapted from Midi player by mudcube
+----------------------------------------------------------
+MIDI.Player : 0.3.1 : 2015-03-26
+
+----------------------------------------------------------
+https://github.com/mudcube/MIDI.js
+----------------------------------------------------------
+*/
+/// <reference path="./jasmid/replayer.ts" />
+/// <reference path="./jasmid/midifile.ts" />
+function clamp(min, max, value) {
+    return (value < min) ? min : ((value > max) ? max : value);
+}
+;
+class MIDIManager {
+    constructor(midiCallback) {
+        this.api = "webaudio";
+        this.currentTime = 0;
+        this.endTime = 0;
+        this.restart = 0;
+        this.playing = false;
+        this.timeWarp = 1;
+        this.startDelay = 0;
+        this.BPM = 120;
+        this.MIDIOffset = 0;
+        this.eventQueue = []; // hold events to be triggered
+        this.queuedTime = 0; // 
+        this.startTime = 0; // to measure time elapse
+        this.noteRegistrar = {}; // get event for requested note
+        this.onMidiEvent = midiCallback;
+    }
+    start(onsuccess = null) {
+        console.log("Starting midi playback of " + this.filename);
+        this.currentTime = clamp(0, this.getLength(), this.currentTime);
+        this.startAudio(this.currentTime, null, onsuccess);
+    }
+    ;
+    resume(onsuccess) {
+        if (this.currentTime < -1) {
+            this.currentTime = -1;
+        }
+        this.startAudio(this.currentTime, null, onsuccess);
+    }
+    ;
+    pause() {
+        console.log("Pausing midi playback of " + this.filename);
+        var tmp = this.restart;
+        this.stopAudio();
+        this.restart = tmp;
+    }
+    ;
+    stop() {
+        console.log("Stopping midi playback of " + this.filename);
+        this.stopAudio();
+        this.restart = 0;
+        this.currentTime = 0;
+    }
+    addListener(listenerCallback) {
+        this.onMidiEvent = listenerCallback;
+    }
+    ;
+    removeListener() {
+        this.onMidiEvent = undefined;
+    }
+    ;
+    loadMidiFile(data, onsuccess, onprogress, onerror) {
+        try {
+            this.currentData = data;
+            this.replayer = Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
+            this.data = this.replayer.getData();
+            this.endTime = this.getLength();
+            //onsuccess()
+            ///
+            // MIDI.loadPlugin({
+            //     // 			instruments: midi.getFileInstruments(),
+            //     onsuccess: onsuccess,
+            //     onprogress: onprogress,
+            //     onerror: onerror
+            // });
+        }
+        catch (event) {
+            onerror && onerror(event);
+        }
+    }
+    ;
+    loadFile(file, onsuccess, onprogress, onerror) {
+        this.filename = file;
+        this.stop();
+        if (file.indexOf('base64,') !== -1) {
+            var data = window.atob(file.split(',')[1]);
+            onsuccess(file);
+            this.loadMidiFile(data, onsuccess, onprogress, onerror);
+        }
+        else {
+            var fetch = new XMLHttpRequest();
+            var self = this;
+            fetch.open('GET', file);
+            fetch.overrideMimeType('text/plain; charset=x-user-defined');
+            fetch.onreadystatechange = function () {
+                if (this.readyState === 4) {
+                    if (this.status === 200) {
+                        var t = this.responseText || '';
+                        var ff = [];
+                        var mx = t.length;
+                        var scc = String.fromCharCode;
+                        for (var z = 0; z < mx; z++) {
+                            ff[z] = scc(t.charCodeAt(z) & 255);
+                        }
+                        ///
+                        var data = ff.join('');
+                        self.loadMidiFile(data, onsuccess, onprogress, onerror);
+                    }
+                    else {
+                        onerror(file) && onerror('Unable to load MIDI file');
+                    }
+                }
+            };
+            fetch.send();
+        }
+    }
+    ;
+    // getFileInstruments():void {
+    //     var instruments = {};
+    //     var programs = {};
+    //     for (var n = 0; n < this.data.length; n ++) {
+    //         var event = this.data[n][0].event;
+    //         if (event.type !== 'channel') {
+    //             continue;
+    //         }
+    //         var channel = event.channel;
+    //         switch(event.subtype) {
+    //             case 'controller':
+    //             //				console.log(event.channel, MIDI.defineControl[event.controllerType], event.value);
+    //             break;
+    //             case 'programChange':
+    //             programs[channel] = event.programNumber;
+    //             break;
+    //             case 'noteOn':
+    //             var program = programs[channel];
+    //             var gm = MIDI.GM.byId[isFinite(program) ? program : channel];
+    //             instruments[gm.id] = true;
+    //             break;
+    //         }
+    //     }
+    //     var ret = [];
+    //     for (var key in instruments) {
+    //         ret.push(key);
+    //     }
+    //     return ret;
+    // };
+    processMidi(data) {
+        if (data.message === 128) {
+            delete this.noteRegistrar[data.note];
+        }
+        else {
+            this.noteRegistrar[data.note] = data;
+        }
+        if (this.onMidiEvent) {
+            this.onMidiEvent(data);
+        }
+        this.currentTime = data.currentTime;
+        ///
+        this.eventQueue.shift();
+        ///
+        if (this.eventQueue.length < 1000) {
+            this.startAudio(this.queuedTime, true);
+        }
+        else if (this.currentTime === this.queuedTime && this.queuedTime < this.endTime) { // grab next sequence
+            this.startAudio(this.queuedTime, true);
+        }
+    }
+    scheduleTracking(channel, note, currentTime, endTime, offset, message, velocity) {
+        return setTimeout(() => {
+            var data = {
+                channel: channel,
+                note: note,
+                now: currentTime,
+                end: endTime,
+                message: message,
+                velocity: velocity
+            };
+            this.processMidi(data);
+        }, currentTime - offset);
+    }
+    ;
+    // Playing the audio
+    startAudio(currentTime, fromCache, onsuccess = null) {
+        if (!this.replayer) {
+            return;
+        }
+        if (!fromCache) {
+            if (typeof currentTime === 'undefined') {
+                currentTime = this.restart;
+            }
+            ///
+            this.playing && this.stopAudio();
+            this.playing = true;
+            this.data = this.replayer.getData();
+            this.endTime = this.getLength();
+        }
+        ///
+        var note;
+        var offset = 0;
+        var messages = 0;
+        var data = this.data;
+        var ctx = this.getContext();
+        var length = data.length;
+        //
+        this.queuedTime = 0.5;
+        ///
+        var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
+        var foffset = currentTime - this.currentTime;
+        // ///
+        // if (this.api !== 'webaudio') { // set currentTime on ctx
+        //     var now = getNow();
+        //     __now = __now || now;
+        //     ctx.currentTime = (now - __now) / 1000;
+        // }
+        ///
+        this.startTime = ctx.currentTime;
+        ///
+        for (var n = 0; n < length && messages < 100; n++) {
+            var obj = data[n];
+            if ((this.queuedTime += obj[1]) <= currentTime) {
+                offset = this.queuedTime;
+                continue;
+            }
+            ///
+            currentTime = this.queuedTime - offset;
+            ///
+            var event = obj[0].event;
+            if (event.type !== 'channel') {
+                continue;
+            }
+            //var channelId = event.channel;
+            // var channel = MIDI.channels[channelId];
+            let channelId = 0;
+            var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
+            var queueTime = this.queuedTime - offset + this.startDelay;
+            switch (event.subtype) {
+                case 'noteOn':
+                    //if (channel.mute) break;
+                    note = event.noteNumber - (this.MIDIOffset || 0);
+                    this.eventQueue.push({
+                        event: event,
+                        time: queueTime,
+                        //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
+                        interval: this.scheduleTracking(channelId, note, this.queuedTime + this.startDelay, this.endTime, offset - foffset, 144, event.velocity)
+                    });
+                    messages++;
+                    break;
+                case 'noteOff':
+                    //if (channel.mute) break;
+                    note = event.noteNumber - (this.MIDIOffset || 0);
+                    this.eventQueue.push({
+                        event: event,
+                        time: queueTime,
+                        //source: MIDI.noteOff(channelId, event.noteNumber, delay),
+                        interval: this.scheduleTracking(channelId, note, this.queuedTime, this.endTime, offset - foffset, 128, 0)
+                    });
+                    break;
+                case 'controller':
+                    // MIDI.setController(channelId, event.controllerType, event.value, delay);
+                    break;
+                case 'programChange':
+                    // MIDI.programChange(channelId, event.programNumber, delay);
+                    break;
+                case 'pitchBend':
+                    // MIDI.pitchBend(channelId, event.value, delay);
+                    break;
+                default:
+                    break;
+            }
+        }
+        ///
+        onsuccess && onsuccess(this.eventQueue);
+    }
+    ;
+    stopAudio() {
+        var ctx = this.getContext();
+        this.playing = false;
+        this.restart += (ctx.currentTime - this.startTime) * 1000;
+        // stop the audio, and intervals
+        while (this.eventQueue.length) {
+            var o = this.eventQueue.pop();
+            window.clearInterval(o.interval);
+            if (!o.source)
+                continue; // is not webaudio
+            o.source.disconnect(0);
+        }
+        // run callback to cancel any notes still playing
+        for (var key in this.noteRegistrar) {
+            var o = this.noteRegistrar[key];
+            if (this.noteRegistrar[key].message === 144 && this.onMidiEvent) {
+                this.onMidiEvent({
+                    channel: o.channel,
+                    note: o.note,
+                    now: o.now,
+                    end: o.end,
+                    message: 128,
+                    velocity: o.velocity
+                });
+            }
+        }
+        // reset noteRegistrar
+        this.noteRegistrar = {};
+    }
+    ;
+    getContext() {
+        return Utilitary.audioContext;
+    }
+    ;
+    getLength() {
+        var data = this.data;
+        var length = data.length;
+        var totalTime = 0.5;
+        for (var n = 0; n < length; n++) {
+            totalTime += data[n][1];
+        }
+        return totalTime;
+    }
+    ;
+    getNow() {
+        if (window.performance && window.performance.now) {
+            return window.performance.now();
+        }
+        else {
+            return Date.now();
+        }
+    }
+    ;
+}
+;
+/*				ModuleMIDIReader.JS
+    HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
+
+*/
+/// <reference path="../midi/MIDIManager.ts"/>
+/// <reference path="../Dragging.ts"/>
+/// <reference path="../CodeFaustParser.ts"/>
+/// <reference path="../Connect.ts"/>
+/// <reference path="../Modules/FaustInterface.ts"/>
+/// <reference path="../Messages.ts"/>
+/// <reference path="ModuleFaust.ts"/>
+/// <reference path="ModuleView.ts"/>
+/// <reference path="GraphicalModule.ts"/>
+class ModuleMIDIReader extends GraphicalModule {
+    constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack) {
+        super(id, x, y, name, htmlElementModuleContainer);
+        this.fModuleInterfaceParams = {};
+        this.MIDIcontrol = new MIDIManager(this.midiCallback);
+        this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
+        this.eventOpenEditHandler = () => { this.edit(); };
+        this.deleteCallback = removeModuleCallBack;
+        this.typeString = "midi";
+        // var connector: Connector = new Connector();
+        // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
+    }
+    loadAndPlay() {
+        this.MIDIcontrol.loadFile("../../data/midi/Dayung - 1.mid", () => { this.MIDIcontrol.start(); }, null, this.logError);
+    }
+    setMidiCallback(cb) {
+        this.targetMidiCallback = cb;
+        this.MIDIcontrol.onMidiEvent = cb;
+    }
+    midiCallback(midiInfo) {
+        console.log(midiInfo);
+        if (this.targetMidiCallback) {
+            this.targetMidiCallback(midiInfo.channel, midiInfo.pitch, midiInfo.velocity);
+        }
+        //todo: publish + display the midi information 
+    }
+    logError(e) {
+        console.log("Error loading midi file");
+        console.log(e);
+    }
+    /*******************************  PUBLIC METHODS  **********************************/
+    deleteModule() {
+        var connector = new Connector();
+        connector.disconnectMIDIModule(this);
+        super.deleteModule();
+        this.deleteCallback(this);
+    }
+    //--- Load a file containing midi information
+    loadMIDIfile() {
+    }
+    //--- Update MIDI contents in module
+    updateMIDIfile() {
+    }
+    /******************** EDIT SOURCE & RECOMPILE *************************/
+    //OVERRIDE
+    edit() {
+        this.saveInterfaceParams();
+        var event = new CustomEvent("codeeditevent");
+        document.dispatchEvent(event);
+        this.deleteFaustInterface();
+        this.moduleView.textArea.style.display = "block";
+        //this.moduleView.textArea.value = this.MIDIcontrol.;
+        Connector.redrawInputConnections(this, this.drag);
+        Connector.redrawOutputConnections(this, this.drag);
+        this.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "enter.png)";
+        this.moduleView.fEditImg.addEventListener("click", this.eventCloseEditHandler);
+        this.moduleView.fEditImg.addEventListener("touchend", this.eventCloseEditHandler);
+        this.moduleView.fEditImg.removeEventListener("click", this.eventOpenEditHandler);
+        this.moduleView.fEditImg.removeEventListener("touchend", this.eventOpenEditHandler);
+    }
+    //---- Update ModuleClass with new name/code source
+    update(name, code) {
+        var event = new CustomEvent("midiEditEvent");
+        document.dispatchEvent(event);
+        // this.moduleFaust.fTempName = name;
+        // this.moduleFaust.fTempSource = code;
+        var module = this;
+        //this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y});
+    }
+    //---- React to recompilation triggered by click on icon
+    recompileSource(event, module) {
+        // Utilitary.showFullPageLoading();
+        // var dsp_code: string = this.moduleView.textArea.value;
+        // this.moduleView.textArea.style.display = "none";
+        // Connector.redrawOutputConnections(this, this.drag);
+        // Connector.redrawInputConnections(this, this.drag)
+        // module.update(this.moduleView.fTitle.textContent, dsp_code);
+        // module.recallInterfaceParams();
+        // module.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "edit.png)";
+        // module.moduleView.fEditImg.addEventListener("click", this.eventOpenEditHandler);
+        // module.moduleView.fEditImg.addEventListener("touchend", this.eventOpenEditHandler);
+        // module.moduleView.fEditImg.removeEventListener("click", this.eventCloseEditHandler);
+        // module.moduleView.fEditImg.removeEventListener("touchend", this.eventCloseEditHandler);
+    }
+    /***************** CREATE/DELETE the DSP Interface ********************/
+    // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
+    //Override
+    setFaustInterfaceControles() {
+        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
+        var moduleFaustInterface = new FaustInterfaceControler((faustInterface) => { this.interfaceSliderCallback(faustInterface); }, (adress, value) => { this.setParamValue(adress, value); });
+        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => { this.MIDIcontrol.start(); }));
+        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => { this.MIDIcontrol.stop(); }));
+        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => { this.MIDIcontrol.pause(); }));
+        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Start", init:"", type:"button", address:""})
+        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Stop", init:"", type:"button", address:""})
+        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Pause", init:"", type:"button", address:""})
+        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
+    }
+    // interface Iitem{
+    //     label: string;
+    //     init: string;
+    //     address: string;
+    //     type: string;
+    //     min: string;
+    //     max: string;
+    //     step: string;
+    //     meta: FaustMeta[];
+    // }
+    // Delete all FaustInterfaceControler
+    deleteFaustInterface() {
+        super.deleteFaustInterface();
+    }
+    // set DSP value to all FaustInterfaceControlers
+    setOutputValues() {
+        for (var i = 0; i < this.moduleControles.length; i++) {
+            this.setParamValue(this.moduleControles[i].itemParam.address, this.moduleControles[i].value);
+        }
+    }
+    // set DSP value to specific FaustInterfaceControlers
+    setDSPValueCallback(address, value) {
+        this.setParamValue(address, value);
+    }
+    //Function overrides
+    getNumInputs() {
+        return 0;
+        //return this.MIDIcontrol.getNumInputs();
+    }
+    getNumOutputs() {
+        return 1;
+        //return this.MIDIcontrol.getNumOutputs();
+    }
+    setParamValue(text, val) {
+        //this.MIDIcontrol.setParamValue(text, val);
+    }
+    // getInputConnections() : Connector[]{
+    //     return [];
+    //     //return this.MIDIcontrol.fInputConnections;
+    // }
+    // getOutputConnections() : Connector[]{
+    //     return this.outputConnection;
+    // }
+    getParameterConnections() {
+        return [];
+        //return this.MIDIcontrol.fOutputConnections;
+    }
+}
 /*				CONNECT.JS
-    Handles Audio/Graphical Connection/Deconnection of modules
-    This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
+Handles Audio/Graphical Connection/Deconnection of modules
+This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
 */
 /// <reference path="Modules/ModuleClass.ts"/>
+/// <reference path="Modules/GraphicalModule.ts"/>
+/// <reference path="Modules/ModuleMidiReader.ts"/>
 /// <reference path="Utilitary.ts"/>
 /// <reference path="Dragging.ts"/>
 class Connector {
@@ -2107,6 +3033,30 @@ class Connector {
     //connect output to device output
     connectOutput(outputModule, divOut) {
         outputModule.moduleFaust.getDSP().connect(divOut.audioNode);
+    }
+    // connect input node to device input
+    connectSample(outMod, divSample) {
+        divSample.audioNode.connect(outMod.moduleFaust.getDSP());
+    }
+    // Connect Nodes in Web Audio Graph
+    connectMidiModules(source, destination) {
+        var destinationDSP;
+        if (destination != null && destination.moduleFaust.getDSP) {
+            destinationDSP = destination.moduleFaust.getDSP();
+        }
+        if (destinationDSP) {
+            source.setMidiCallback((c, p, v) => { destination.midiControl(c, p, v); });
+        }
+    }
+    // Connect Nodes in Web Audio Graph
+    connectMidiCompositionModule(source, destination, instrument_id) {
+        var destinationDSP;
+        if (destination != null && destination.moduleFaust.getDSP) {
+            destinationDSP = destination.moduleFaust.getDSP();
+        }
+        if (destinationDSP) {
+            source.addMidiCallback(instrument_id, this, (command) => { destination.midiControl(command); });
+        }
     }
     // Connect Nodes in Web Audio Graph
     connectModules(source, destination) {
@@ -2141,6 +3091,54 @@ class Connector {
                     this.connectModules(source, source.moduleFaust.getOutputConnections()[i].destination);
             }
         }
+    }
+    connectModuleParameters(source, destination, srcParameterAddress, dstParameterAdress) {
+        var srcController;
+        var dstController;
+        for (let i = 0; i < source.moduleControles.length; i++) {
+            let mod = source.moduleControles[i];
+            if (mod.itemParam.address == srcParameterAddress)
+                srcController = mod;
+        }
+        for (let i = 0; i < destination.moduleControles.length; i++) {
+            let mod = destination.moduleControles[i];
+            if (mod.itemParam.address == dstParameterAdress)
+                dstController = mod;
+        }
+        if (srcController && dstController) {
+            srcController.valueChangeCallbacks[dstParameterAdress] = (adress, value) => { destination.externalSetParamValue(adress, value); };
+        }
+        // var sourceDSP: IfDSP;
+        // var destinationDSP: IfDSP;
+        // if (destination != null && destination.moduleFaust.getDSP) {
+        //     destinationDSP = destination.moduleFaust.getDSP();
+        // }
+        // if (source.moduleFaust.getDSP) {
+        //     sourceDSP = source.moduleFaust.getDSP();
+        // }
+        // if (sourceDSP && destinationDSP) {
+        //     sourceDSP.connect(destinationDSP)
+        // }
+        // source.setDSPValue();
+        // destination.setDSPValue();
+    }
+    // Disconnect Nodes in Web Audio Graph
+    disconnectModuleParameters(source, destination) {
+        // // We want to be dealing with the audio node elements from here on
+        // var sourceCopy: ModuleClass = source;
+        // var sourceCopyDSP: IfDSP;
+        // // Searching for src/dst DSP if existing
+        // if (sourceCopy != undefined && sourceCopy.moduleFaust.getDSP) {
+        //     sourceCopyDSP = sourceCopy.moduleFaust.getDSP();
+        //     sourceCopyDSP.disconnect();
+        // }
+        // // Reconnect all disconnected connections (because disconnect API cannot break a single connection)
+        // if (source!=undefined&&source.moduleFaust.getOutputConnections()) {
+        //     for (var i = 0; i < source.moduleFaust.getOutputConnections().length; i++){
+        //         if (source.moduleFaust.getOutputConnections()[i].destination != destination)
+        //             this.connectModules(source, source.moduleFaust.getOutputConnections()[i].destination);
+        //     }
+        // }
     }
     /**************************************************/
     /***************** Save Connection*****************/
@@ -2191,6 +3189,9 @@ class Connector {
                 this.breakSingleInputConnection(module.moduleFaust.getInputConnections()[0].source, module, module.moduleFaust.getInputConnections()[0]);
         }
     }
+    disconnectMIDIModule(module) {
+        //todo
+    }
     static redrawInputConnections(module, drag) {
         var offset = module.moduleView.getInputNode();
         var x = module.moduleView.inputOutputNodeDimension / 2; // + window.scrollX ;
@@ -2200,12 +3201,35 @@ class Connector {
             y += offset.offsetTop;
             offset = offset.offsetParent;
         }
-        for (var c = 0; c < module.moduleFaust.getInputConnections().length; c++) {
-            var currentConnectorShape = module.moduleFaust.getInputConnections()[c].connectorShape;
+        for (var c = 0; c < module.getInputConnections().length; c++) {
+            var currentConnectorShape = module.getInputConnections()[c].connectorShape;
             var x1 = x;
             var y1 = y;
             var x2 = currentConnectorShape.x2;
             var y2 = currentConnectorShape.y2;
+            var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
+            currentConnectorShape.setAttributeNS(null, "d", d);
+            drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
+        }
+        for (var c = 0; c < module.getInputParameterConnections().length; c++) {
+            var connector = module.getInputParameterConnections()[c];
+            var offset = connector.sourceNode;
+            var x1 = 0;
+            var y1 = 0;
+            while (offset) {
+                x1 += offset.offsetLeft;
+                y1 += offset.offsetTop;
+                offset = offset.offsetParent;
+            }
+            offset = connector.dstNode;
+            var x2 = 0;
+            var y2 = 0;
+            while (offset) {
+                x2 += offset.offsetLeft;
+                y2 += offset.offsetTop;
+                offset = offset.offsetParent;
+            }
+            var currentConnectorShape = module.getInputParameterConnections()[c].connectorShape;
             var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
             currentConnectorShape.setAttributeNS(null, "d", d);
             drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
@@ -2220,13 +3244,38 @@ class Connector {
             y += offset.offsetTop;
             offset = offset.offsetParent;
         }
-        for (var c = 0; c < module.moduleFaust.getOutputConnections().length; c++) {
-            if (module.moduleFaust.getOutputConnections()[c].connectorShape) {
-                var currentConnectorShape = module.moduleFaust.getOutputConnections()[c].connectorShape;
+        for (var c = 0; c < module.getOutputConnections().length; c++) {
+            if (module.getOutputConnections()[c].connectorShape) {
+                var currentConnectorShape = module.getOutputConnections()[c].connectorShape;
                 var x1 = currentConnectorShape.x1;
                 var y1 = currentConnectorShape.y1;
                 var x2 = x;
                 var y2 = y;
+                var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
+                currentConnectorShape.setAttributeNS(null, "d", d);
+                drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
+            }
+        }
+        for (var c = 0; c < module.getOutputParameterConnections().length; c++) {
+            if (module.getOutputParameterConnections()[c].connectorShape) {
+                var connector = module.getOutputParameterConnections()[c];
+                var offset = connector.sourceNode;
+                var x1 = 0;
+                var y1 = 0;
+                while (offset) {
+                    x1 += offset.offsetLeft;
+                    y1 += offset.offsetTop;
+                    offset = offset.offsetParent;
+                }
+                offset = connector.dstNode;
+                var x2 = 0;
+                var y2 = 0;
+                while (offset) {
+                    x2 += offset.offsetLeft;
+                    y2 += offset.offsetTop;
+                    offset = offset.offsetParent;
+                }
+                var currentConnectorShape = module.getOutputParameterConnections()[c].connectorShape;
                 var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
                 currentConnectorShape.setAttributeNS(null, "d", d);
                 drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
@@ -2995,7 +4044,7 @@ class Scene {
         this.fAudioInput = new ModuleClass(Utilitary.idX++, positionInput.x, positionInput.y, "input", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module); }, this.compileFaust);
         this.fAudioInput.patchID = "input";
         var scene = this;
-        this.compileFaust({ name: "input", sourceCode: "process=_,_;", x: positionInput.x, y: positionInput.y, callback: (factory) => { scene.integrateAudioInput(factory); } });
+        this.compileFaust({ isPoly: false, name: "input", sourceCode: "process=_,_;", x: positionInput.x, y: positionInput.y, callback: (factory) => { scene.integrateAudioInput(factory); } });
     }
     integrateOutput() {
         var positionOutput = this.positionOutputModule();
@@ -3003,7 +4052,7 @@ class Scene {
         this.fAudioOutput = new ModuleClass(Utilitary.idX++, positionOutput.x, positionOutput.y, "output", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module); }, this.compileFaust);
         this.fAudioOutput.patchID = "output";
         this.addMuteOutputListner(this.fAudioOutput);
-        this.compileFaust({ name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory); } });
+        this.compileFaust({ isPoly: false, name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory); } });
     }
     integrateAudioOutput(factory) {
         if (this.fAudioOutput) {
@@ -3073,17 +4122,20 @@ class Scene {
         }
         var json;
         var jsonObjectCollection = {};
+        //TODO make this more generic for different interface elements
+        //Make getting the JSON a method of the fucking module
         for (var i = 0; i < this.fModuleList.length; i++) {
             if (this.fModuleList[i].patchID != "output" && this.fModuleList[i].patchID != "input") {
                 jsonObjectCollection[this.fModuleList[i].patchID.toString()] = new JsonSaveModule();
+                let module = this.fModuleList[i];
                 var jsonObject = jsonObjectCollection[this.fModuleList[i].patchID.toString()];
                 jsonObject.sceneName = this.sceneName;
-                jsonObject.patchId = this.fModuleList[i].patchID.toString();
-                jsonObject.code = this.fModuleList[i].moduleFaust.getSource();
-                jsonObject.name = this.fModuleList[i].moduleFaust.getName();
-                jsonObject.x = this.fModuleList[i].moduleView.getModuleContainer().getBoundingClientRect().left.toString();
-                jsonObject.y = this.fModuleList[i].moduleView.getModuleContainer().getBoundingClientRect().top.toString();
-                var inputs = this.fModuleList[i].moduleFaust.getInputConnections();
+                jsonObject.patchId = module.patchID.toString();
+                jsonObject.code = module.moduleFaust.getSource();
+                jsonObject.name = module.moduleFaust.getName();
+                jsonObject.x = module.moduleView.getModuleContainer().getBoundingClientRect().left.toString();
+                jsonObject.y = module.moduleView.getModuleContainer().getBoundingClientRect().top.toString();
+                var inputs = module.moduleFaust.getInputConnections();
                 var jsonInputs = new JsonInputsSave();
                 jsonInputs.source = [];
                 if (inputs) {
@@ -3091,7 +4143,7 @@ class Scene {
                         jsonInputs.source.push(inputs[j].source.patchID.toString());
                     }
                 }
-                var outputs = this.fModuleList[i].moduleFaust.getOutputConnections();
+                var outputs = module.moduleFaust.getOutputConnections();
                 var jsonOutputs = new JsonOutputsSave();
                 jsonOutputs.destination = [];
                 if (outputs) {
@@ -3099,14 +4151,14 @@ class Scene {
                         jsonOutputs.destination.push(outputs[j].destination.patchID.toString());
                     }
                 }
-                var params = this.fModuleList[i].moduleFaust.getDSP().getParams();
+                var params = module.moduleFaust.getDSP().getParams();
                 var jsonParams = new JsonParamsSave();
                 jsonParams.sliders = [];
                 if (params) {
                     for (var j = 0; j < params.length; j++) {
                         var jsonSlider = new JsonSliderSave();
                         jsonSlider.path = params[j];
-                        jsonSlider.value = this.fModuleList[i].moduleFaust.getDSP().getParamValue(params[j]);
+                        jsonSlider.value = module.moduleFaust.getDSP().getParamValue(params[j]);
                         jsonParams.sliders.push(jsonSlider);
                     }
                 }
@@ -3129,7 +4181,7 @@ class Scene {
                 jsonObject.outputs = jsonOutputs;
                 jsonObject.params = jsonParams;
                 jsonObject.acc = jsonAccs;
-                var factorySave = faust.writeDSPFactoryToMachine(this.fModuleList[i].moduleFaust.factory);
+                var factorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
                 if (factorySave && isPrecompiled) {
                     jsonObject.factory = new JsonFactorySave();
                     jsonObject.factory.name = factorySave.name;
@@ -3187,7 +4239,8 @@ class Scene {
             else if (jsonObject.patchId != "output" && jsonObject.patchId != "input") {
                 this.tempPatchId = jsonObject.patchId;
                 this.sceneName = jsonObject.sceneName;
-                var argumentCompile = { name: jsonObject.name, sourceCode: jsonObject.code, x: parseFloat(jsonObject.x), y: parseFloat(jsonObject.y), callback: (factory) => { this.createModule(factory); } };
+                //todo: get ispoly or not
+                var argumentCompile = { isPoly: false, name: jsonObject.name, sourceCode: jsonObject.code, x: parseFloat(jsonObject.x), y: parseFloat(jsonObject.y), callback: (factory) => { this.createModule(factory); } };
                 this.compileFaust(argumentCompile);
             }
             else {
@@ -3443,6 +4496,295 @@ class JsonSliderSave {
 }
 class JsonFactorySave {
 }
+/*				MODULECLASS.JS
+HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
+
+*/
+/// <reference path="../Dragging.ts"/>
+/// <reference path="../CodeFaustParser.ts"/>
+/// <reference path="../Connect.ts"/>
+/// <reference path="../Modules/FaustInterface.ts"/>
+/// <reference path="../Messages.ts"/>
+/// <reference path="ModuleFaust.ts"/>
+/// <reference path="ModuleView.ts"/>
+/// <reference path="GraphicalModule.ts"/>
+//Todo, delete callback targets on cable deletion
+class InstrumentController {
+    constructor(name, n_movements) {
+        this.name = name;
+        this.fileLoaded = false;
+        this.movementMidiControllers = {}; // {number: MIDIManager[]}
+        this.currentMovement = 0;
+        this.currentController = 0;
+        this.isPlaying = false;
+        this.callbackTargets = [];
+        this.connectors = [];
+        for (let i = 0; i < n_movements; i++) {
+            this.movementMidiControllers[i] = [];
+        }
+    }
+    addMidiCallback(c, cb) {
+        this.callbackTargets.push(cb);
+        this.connectors.push(c);
+        // for (let m of Object.keys(this.movementMidiControllers)){
+        //     for (let c of this.movementMidiControllers[m]){
+        //         c.addListener(cb);
+        //     }
+        // }
+    }
+    midiCallback(midiInfo) {
+        console.log(`${this.name} - MIDI event: ${midiInfo}`);
+        var cbtl = this.callbackTargets.length;
+        if (cbtl > 0) {
+            for (let i = 0; i < cbtl; i++) {
+                this.callbackTargets[i](midiInfo);
+            }
+        }
+    }
+    loadMidi(file, movement) {
+        let m = new MIDIManager((midiInfo) => this.midiCallback(midiInfo));
+        m.loadFile(file, (file) => { this.midiLoaded(file); }, null, (file) => (this.midiLoadFailed(file)));
+        this.movementMidiControllers[movement].push(m);
+    }
+    midiLoaded(filename) {
+        console.log(this.name + " successfully loaded file : " + filename);
+        this.fileLoaded = true;
+    }
+    midiLoadFailed(filename) {
+        console.log(this.name + " failed to load file : " + filename);
+        this.fileLoaded = false;
+    }
+    play() {
+        console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`);
+        let movementLength = this.movementMidiControllers[this.currentMovement].length;
+        if (movementLength > 0) {
+            if (this.currentController >= movementLength || this.currentController < 0) {
+                this.currentController = 0;
+            }
+            this.movementMidiControllers[this.currentMovement][this.currentController].start();
+            this.isPlaying = true;
+        }
+    }
+    stop() {
+        this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+        this.isPlaying = false;
+    }
+    loopCallback() {
+        this.currentController += 1;
+        this.play();
+    }
+}
+//TODO:
+//make a midi output connector for each unique instrument
+//overall bpm slider
+//on movement load
+//calculate maximum number of bars possible 
+//todo: add probabilities
+class CompositionModule extends GraphicalModule {
+    constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack, moduleInfo, loadedCallback) {
+        super(id, x, y, name, htmlElementModuleContainer);
+        this.fModuleInterfaceParams = {};
+        //this.MIDIcontrol =new MIDIManager(this.midiCallback);
+        this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
+        this.eventOpenEditHandler = () => { this.edit(); };
+        this.deleteCallback = removeModuleCallBack;
+        this.typeString = "midimaster";
+        this.instruments = new Set();
+        this.movements = [];
+        this.instrumentControllers = {};
+        this.fetchCompositionFile(moduleInfo.file, loadedCallback);
+        // var connector: Connector = new Connector();
+        // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
+    }
+    //load composition json file
+    fetchCompositionFile(file, cb) {
+        var fp = Utilitary.getCompositionDir() + file;
+        console.log(`Loading composition file ${fp}`);
+        fetch(fp)
+            .then(response => response.json())
+            .then(json => {
+            this.loadComposition(json);
+            cb(this);
+        });
+    }
+    loadComposition(comp) {
+        let movement;
+        this.instruments.clear();
+        //todo cleanup past movements and instrument controllers
+        // this.movements.clear();
+        this.totalMovements = comp.n_movements;
+        console.log(`Comp contains ${this.totalMovements} movements`);
+        for (let i = 0; i < comp.n_movements; i++) {
+            movement = comp.movements[i];
+            this.movements.push(movement);
+            for (let inst of movement.instruments) {
+                this.instruments.add(inst);
+                if (this.instrumentControllers[inst] == null) {
+                    this.instrumentControllers[inst] = (new InstrumentController(inst, this.totalMovements));
+                }
+            }
+            for (let inst of movement.instruments) {
+                for (let midifile of movement.midi_files[inst]) {
+                    this.instrumentControllers[inst].loadMidi(Utilitary.getMidiDir() + midifile, i);
+                }
+            }
+        }
+        this.currentMovement = comp.movements[0];
+        this.movementIndex = 0;
+    }
+    startMovement(movementIndex) {
+        var movementInstruments = this.movements[movementIndex].instruments;
+        console.log(`Starting movement ${movementIndex}`);
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            ic.currentMovement = movementIndex;
+            //in movement
+            if (movementInstruments.indexOf(instrument) >= 0) {
+                if (!ic.isPlaying) {
+                    ic.play();
+                }
+            }
+            // not in movement
+            else {
+                if (ic.isPlaying) {
+                    ic.stop();
+                }
+            }
+        }
+    }
+    playAll() {
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            ic.movementIndex = this.currentMovement;
+            if (!ic.isPlaying) {
+                ic.play();
+            }
+        }
+    }
+    stopAll() {
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            if (ic.isPlaying) {
+                ic.stop();
+            }
+        }
+    }
+    //todo: add probabilities
+    nextMovement() {
+        this.movementIndex += 1;
+        this.startMovement(this.movementIndex);
+    }
+    /*******************************  PUBLIC METHODS  **********************************/
+    deleteModule() {
+        var connector = new Connector();
+        //connector.disconnectMIDIModule(this);
+        super.deleteModule();
+        this.deleteCallback(this);
+    }
+    addMidiCallback(id, c, cb) {
+        if (!this.instrumentControllers[id]) {
+            console.log(`Failed to set callback because instrument ${id} does not exist`);
+        }
+        this.instrumentControllers[id].addMidiCallback(c, cb);
+    }
+    /******************** EDIT SOURCE & RECOMPILE *************************/
+    //OVERRIDE
+    edit() {
+        this.saveInterfaceParams();
+        var event = new CustomEvent("codeeditevent");
+        document.dispatchEvent(event);
+        this.deleteFaustInterface();
+        this.moduleView.textArea.style.display = "block";
+        //this.moduleView.textArea.value = this.MIDIcontrol.;
+        Connector.redrawInputConnections(this, this.drag);
+        Connector.redrawOutputConnections(this, this.drag);
+        this.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "enter.png)";
+        this.moduleView.fEditImg.addEventListener("click", this.eventCloseEditHandler);
+        this.moduleView.fEditImg.addEventListener("touchend", this.eventCloseEditHandler);
+        this.moduleView.fEditImg.removeEventListener("click", this.eventOpenEditHandler);
+        this.moduleView.fEditImg.removeEventListener("touchend", this.eventOpenEditHandler);
+    }
+    //---- Update ModuleClass with new name/code source
+    update(name, code) {
+        var event = new CustomEvent("midiEditEvent");
+        document.dispatchEvent(event);
+        //this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y});
+    }
+    //---- React to recompilation triggered by click on icon
+    recompileSource(event, module) {
+        // Utilitary.showFullPageLoading();
+        // var dsp_code: string = this.moduleView.textArea.value;
+        // this.moduleView.textArea.style.display = "none";
+        // Connector.redrawOutputConnections(this, this.drag);
+        // Connector.redrawInputConnections(this, this.drag)
+        // module.update(this.moduleView.fTitle.textContent, dsp_code);
+        // module.recallInterfaceParams();
+        // module.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "edit.png)";
+        // module.moduleView.fEditImg.addEventListener("click", this.eventOpenEditHandler);
+        // module.moduleView.fEditImg.addEventListener("touchend", this.eventOpenEditHandler);
+        // module.moduleView.fEditImg.removeEventListener("click", this.eventCloseEditHandler);
+        // module.moduleView.fEditImg.removeEventListener("touchend", this.eventCloseEditHandler);
+    }
+    /***************** CREATE/DELETE the DSP Interface ********************/
+    //play, reset, movement select buttons
+    // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
+    //Override
+    setFaustInterfaceControles() {
+        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
+        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => { this.playAll(); }));
+        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => { this.stopAll(); }));
+        for (let i = 0; i < this.totalMovements; i++) {
+            this.moduleControles.push(FaustInterfaceControler.addButton(`M ${i}`, () => { this.startMovement(i); }));
+        }
+        for (let inst of this.instruments) {
+            this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => { }));
+        }
+        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
+    }
+    // interface Iitem{
+    //     label: string;
+    //     init: string;
+    //     address: string;
+    //     type: string;
+    //     min: string;
+    //     max: string;
+    //     step: string;
+    //     meta: FaustMeta[];
+    // }
+    // Delete all FaustInterfaceControler
+    deleteFaustInterface() {
+        super.deleteFaustInterface();
+    }
+    // set DSP value to all FaustInterfaceControlers
+    setOutputValues() {
+    }
+    // set DSP value to specific FaustInterfaceControlers
+    setDSPValueCallback(address, value) {
+    }
+    //Function overrides
+    getNumInputs() {
+        return 0;
+        //return this.MIDIcontrol.getNumInputs();
+    }
+    getNumOutputs() {
+        return 0;
+        //return this.MIDIcontrol.getNumOutputs();
+    }
+    setParamValue(text, val) {
+        //this.MIDIcontrol.setParamValue(text, val);
+    }
+    getOutputConnections() {
+        var connectors = [];
+        for (let inst of this.instruments) {
+            connectors.push(...this.instrumentControllers[inst].connectors);
+        }
+        return connectors;
+    }
+    getParameterConnections() {
+        return [];
+        //return this.MIDIcontrol.fOutputConnections;
+    }
+}
 /// <reference path="Messages.ts"/>
 //class ErrorFaust
 class ErrorFaust {
@@ -3545,12 +4887,14 @@ class Library {
     }
     //get json with library infos
     fillLibrary() {
-        var url = "faust-modules/index.json";
+        var url = "faust-modules/modules.json";
+        console.log("Filling lib");
         Utilitary.getXHR(url, (json) => { this.fillLibraryCallBack(json); }, (errorMessage) => { Utilitary.errorCallBack(errorMessage); });
     }
     //dispatch library info to each submenu
     fillLibraryCallBack(json) {
         var jsonObject = JSON.parse(json);
+        console.log(jsonObject);
         jsonObject.effet = "effetLibrarySelect";
         jsonObject.effetSupprStructure = "faust-modules/effects/";
         jsonObject.instrument = "instrumentLibrarySelect";
@@ -3560,6 +4904,7 @@ class Library {
         this.fillSubMenu(jsonObject.instruments, jsonObject.instrument, jsonObject.instrumentSupprStructure);
         this.fillSubMenu(jsonObject.effets, jsonObject.effet, jsonObject.effetSupprStructure);
         this.fillSubMenu(jsonObject.exemples, jsonObject.exemple, jsonObject.exempleSupprStructure);
+        //this.fillSubMenu(["ass"], "cock","shit");
     }
     //fill submenu and attach events
     fillSubMenu(options, subMenuId, stringStructureRemoved) {
@@ -4169,6 +5514,296 @@ class Save {
         this.drive.trashFile(id);
         confirmCallBack();
     }
+}
+//Accelerometer Class
+/// <reference path="Utilitary.ts"/>
+/// <reference path="Modules/FaustInterface.ts"/>
+var Axis;
+(function (Axis) {
+    Axis[Axis["x"] = 0] = "x";
+    Axis[Axis["y"] = 1] = "y";
+    Axis[Axis["z"] = 2] = "z";
+})(Axis || (Axis = {}));
+;
+var Curve;
+(function (Curve) {
+    Curve[Curve["Up"] = 0] = "Up";
+    Curve[Curve["Down"] = 1] = "Down";
+    Curve[Curve["UpDown"] = 2] = "UpDown";
+    Curve[Curve["DownUp"] = 3] = "DownUp";
+})(Curve || (Curve = {}));
+;
+//object describing value off accelerometer metadata values.
+class AccMeta {
+}
+//Contains the info regarding the mapping of the FaustInterfaceControler and the accelerometer
+class AccelerometerSlider {
+    constructor(accParams) {
+        if (accParams != null) {
+            this.isEnabled = accParams.isEnabled;
+            this.acc = accParams.acc;
+            this.setAttributes(accParams.acc);
+            this.address = accParams.address;
+            this.min = accParams.min;
+            this.max = accParams.max;
+            this.init = accParams.init;
+            this.label = accParams.label;
+            this.isActive = Utilitary.isAccelerometerOn;
+        }
+    }
+    setAttributes(fMetaAcc) {
+        if (fMetaAcc != null) {
+            var arrayMeta = fMetaAcc.split(" ");
+            this.axis = parseInt(arrayMeta[0]);
+            this.curve = parseInt(arrayMeta[1]);
+            this.amin = parseInt(arrayMeta[2]);
+            this.amid = parseInt(arrayMeta[3]);
+            this.amax = parseInt(arrayMeta[4]);
+        }
+    }
+    setAttributesDetailed(axis, curve, min, mid, max) {
+        this.axis = axis;
+        this.curve = curve;
+        this.amin = min;
+        this.amid = mid;
+        this.amax = max;
+    }
+}
+//object responsible of storing all accelerometerSlider and propagate to them the accelerometer infos.
+class AccelerometerHandler {
+    // get Accelerometer value
+    getAccelerometerValue() {
+        if (window.DeviceMotionEvent) {
+            window.addEventListener("devicemotion", (event) => { this.propagate(event); }, false);
+        }
+        else {
+            // Browser doesn't support DeviceMotionEvent
+            console.log(Utilitary.messageRessource.noDeviceMotion);
+        }
+    }
+    // propagate the new x, y, z value of the accelerometer to the registred object
+    propagate(event) {
+        var x = event.accelerationIncludingGravity.x;
+        var y = event.accelerationIncludingGravity.y;
+        var z = event.accelerationIncludingGravity.z;
+        for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
+            if (AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isActive && AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isEnabled) {
+                this.axisSplitter(AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider, x, y, z, this.applyNewValueToModule);
+            }
+        }
+        // update the faustInterfaceControler of the AccelerometerEditView
+        if (AccelerometerHandler.faustInterfaceControlerEdit != null) {
+            this.axisSplitter(AccelerometerHandler.faustInterfaceControlerEdit.accelerometerSlider, x, y, z, this.applyValueToEdit);
+        }
+    }
+    //create and register accelerometerSlide
+    static registerAcceleratedSlider(accParams, faustInterfaceControler, sliderEdit) {
+        var accelerometerSlide = new AccelerometerSlider(accParams);
+        faustInterfaceControler.accelerometerSlider = accelerometerSlide;
+        AccelerometerHandler.curveSplitter(accelerometerSlide);
+        if (sliderEdit) {
+            AccelerometerHandler.faustInterfaceControlerEdit = faustInterfaceControler;
+        }
+        else {
+            AccelerometerHandler.faustInterfaceControler.push(faustInterfaceControler);
+        }
+    }
+    //give the good axis value to the accelerometerslider, convert it to the faust value before
+    axisSplitter(accelerometerSlide, x, y, z, callBack) {
+        switch (accelerometerSlide.axis) {
+            case Axis.x:
+                var newVal = accelerometerSlide.converter.uiToFaust(x);
+                callBack(accelerometerSlide, newVal, x);
+                break;
+            case Axis.y:
+                var newVal = accelerometerSlide.converter.uiToFaust(y);
+                callBack(accelerometerSlide, newVal, y);
+                break;
+            case Axis.z:
+                var newVal = accelerometerSlide.converter.uiToFaust(z);
+                callBack(accelerometerSlide, newVal, z);
+                break;
+        }
+    }
+    //update value of the dsp
+    applyNewValueToModule(accSlid, newVal, axeValue) {
+        accSlid.callbackValueChange(accSlid.address, newVal);
+    }
+    //update value of the edit range in AccelerometerEditView
+    applyValueToEdit(accSlid, newVal, axeValue) {
+        AccelerometerHandler.faustInterfaceControlerEdit.faustInterfaceView.slider.value = axeValue.toString();
+    }
+    //Apply the right converter with the right curve to an accelerometerSlider
+    static curveSplitter(accelerometerSlide) {
+        switch (accelerometerSlide.curve) {
+            case Curve.Up:
+                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
+                break;
+            case Curve.Down:
+                accelerometerSlide.converter = new AccDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
+                break;
+            case Curve.UpDown:
+                accelerometerSlide.converter = new AccUpDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
+                break;
+            case Curve.DownUp:
+                accelerometerSlide.converter = new AccDownUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
+                break;
+            default:
+                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
+        }
+    }
+}
+//array containing all the FaustInterfaceControler of the scene
+AccelerometerHandler.faustInterfaceControler = [];
+//faustInterfaceControler of the AccelerometerEditView
+AccelerometerHandler.faustInterfaceControlerEdit = null;
+/***************************************************************************************
+********************  Converter objects use to map acc and faust value *****************
+****************************************************************************************/
+class MinMaxClip {
+    constructor(x, y) {
+        this.fLo = Math.min(x, y);
+        this.fHi = Math.max(x, y);
+    }
+    clip(x) {
+        if (x < this.fLo) {
+            return this.fLo;
+        }
+        else if (x > this.fHi) {
+            return this.fHi;
+        }
+        else {
+            return x;
+        }
+    }
+}
+class Interpolator {
+    constructor(lo, hi, v1, v2) {
+        this.range = new MinMaxClip(lo, hi);
+        if (hi != lo) {
+            //regular case
+            this.fCoef = (v2 - v1) / (hi - lo);
+            this.fOffset = v1 - lo * this.fCoef;
+        }
+        else {
+            this.fCoef = 0;
+            this.fOffset = (v1 + v2) / 2;
+        }
+    }
+    returnMappedValue(v) {
+        var x = this.range.clip(v);
+        return this.fOffset + x * this.fCoef;
+    }
+    getLowHigh(amin, amax) {
+        return { amin: this.range.fLo, amax: this.range.fHi };
+    }
+}
+class Interpolator3pt {
+    constructor(lo, mid, hi, v1, vMid, v2) {
+        this.fSegment1 = new Interpolator(lo, mid, v1, vMid);
+        this.fSegment2 = new Interpolator(mid, hi, vMid, v2);
+        this.fMiddle = mid;
+    }
+    returnMappedValue(x) {
+        return (x < this.fMiddle) ? this.fSegment1.returnMappedValue(x) : this.fSegment2.returnMappedValue(x);
+    }
+    getMappingValues(amin, amid, amax) {
+        var lowHighSegment1 = this.fSegment1.getLowHigh(amin, amid);
+        var lowHighSegment2 = this.fSegment2.getLowHigh(amid, amax);
+        return { amin: lowHighSegment1.amin, amid: lowHighSegment2.amin, amax: lowHighSegment2.amax };
+    }
+}
+class AccUpConverter {
+    constructor(amin, amid, amax, fmin, fmid, fmax) {
+        this.fActive = true;
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmid, fmax);
+        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amin, amid, amax);
+    }
+    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
+    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
+    ;
+    setMappingValues(amin, amid, amax, min, init, max) {
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, init, max);
+        this.faustToAcc = new Interpolator3pt(min, init, max, amin, amid, amax);
+    }
+    ;
+    getMappingValues(amin, amid, amax) {
+        return this.accToFaust.getMappingValues(amin, amid, amax);
+    }
+    ;
+    setActive(onOff) { this.fActive = onOff; }
+    ;
+    getActive() { return this.fActive; }
+    ;
+}
+class AccDownConverter {
+    constructor(amin, amid, amax, fmin, fmid, fmax) {
+        this.fActive = true;
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmid, fmin);
+        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amax, amid, amin);
+    }
+    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
+    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
+    ;
+    setMappingValues(amin, amid, amax, min, init, max) {
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, init, min);
+        this.faustToAcc = new Interpolator3pt(min, init, max, amax, amid, amin);
+    }
+    ;
+    getMappingValues(amin, amid, amax) {
+        return this.accToFaust.getMappingValues(amin, amid, amax);
+    }
+    ;
+    setActive(onOff) { this.fActive = onOff; }
+    ;
+    getActive() { return this.fActive; }
+    ;
+}
+class AccUpDownConverter {
+    constructor(amin, amid, amax, fmin, fmid, fmax) {
+        this.fActive = true;
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmax, fmin);
+        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
+    }
+    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
+    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
+    ;
+    setMappingValues(amin, amid, amax, min, init, max) {
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, max, min);
+        this.faustToAcc = new Interpolator(min, max, amin, amax);
+    }
+    ;
+    getMappingValues(amin, amid, amax) {
+        return this.accToFaust.getMappingValues(amin, amid, amax);
+    }
+    ;
+    setActive(onOff) { this.fActive = onOff; }
+    ;
+    getActive() { return this.fActive; }
+    ;
+}
+class AccDownUpConverter {
+    constructor(amin, amid, amax, fmin, fmid, fmax) {
+        this.fActive = true;
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmin, fmax);
+        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
+    }
+    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
+    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
+    ;
+    setMappingValues(amin, amid, amax, min, init, max) {
+        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, min, max);
+        this.faustToAcc = new Interpolator(min, max, amin, amax);
+    }
+    ;
+    getMappingValues(amin, amid, amax) {
+        return this.accToFaust.getMappingValues(amin, amid, amax);
+    }
+    ;
+    setActive(onOff) { this.fActive = onOff; }
+    ;
+    getActive() { return this.fActive; }
+    ;
 }
 /// <reference path="../Utilitary.ts"/>
 class AccelerometerEditView {
@@ -5426,6 +7061,7 @@ Create Factories and Modules
 
 */
 /// <reference path="Scenes/SceneClass.ts"/>
+/// <reference path="Modules/CompositionModule.ts"/>
 /// <reference path="Modules/ModuleClass.ts"/>
 /// <reference path="Modules/ModuleView.ts"/>
 /// <reference path="Modules/ModuleFaust.ts"/>
@@ -5451,6 +7087,8 @@ Create Factories and Modules
 /// <reference path="Messages.ts"/>
 /// <reference path="Lib/perfectScrollBar/js/perfect-ScrollBar.min.d.ts"/>
 //object containg info necessary to compile faust code
+class JSONModuleDescription {
+}
 class App {
     createAllScenes() {
         var sceneView = new SceneView();
@@ -5498,9 +7136,47 @@ class App {
         //locate libraries used in libfaust compiler
         var libpath = location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/')) + "/faustlibraries/";
         var args = ["-I", libpath, "-ftz", "2"];
+        console.log("trying to compile file" + compileFaust);
+        //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
+        //check if it's an
+        try {
+            //todo make poly work
+            if (compileFaust.isPoly) {
+                this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => {
+                    factory.isPoly = true;
+                    compileFaust.callback(factory);
+                });
+            }
+            else {
+                this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => {
+                    factory.isPoly = false;
+                    compileFaust.callback(factory);
+                });
+            }
+        }
+        catch (error) {
+            new Message(error);
+        }
+        if (currentScene) {
+            currentScene.unmuteScene();
+        }
+        ;
+    }
+    compileNotFaust(compileFaust) {
+        //  Temporarily Saving parameters of compilation
+        this.tempModuleName = compileFaust.name;
+        this.tempModuleSourceCode = compileFaust.sourceCode;
+        this.tempModuleX = compileFaust.x;
+        this.tempModuleY = compileFaust.y;
+        var currentScene = Utilitary.currentScene;
+        if (currentScene) {
+            currentScene.muteScene();
+        }
+        ;
+        //locate libraries used in libfaust compiler
+        console.log("Loading non-FAUST module : " + compileFaust.name);
         //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
         try {
-            this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => { compileFaust.callback(factory); });
         }
         catch (error) {
             new Message(error);
@@ -5524,6 +7200,9 @@ class App {
             module.setFaustInterfaceControles();
             module.createFaustInterface();
             module.addInputOutputNodes();
+            if (module.isPoly) {
+                module.addMidiControlNode();
+            }
             //set listener to recompile when dropping faust code on the module
             if (this.tempModuleName != "input" && this.tempModuleName != "output") {
                 module.moduleView.fModuleContainer.ondrop = (e) => {
@@ -5544,6 +7223,84 @@ class App {
             Utilitary.currentScene.addModule(module);
             if (!Utilitary.currentScene.isInitLoading) {
                 Utilitary.hideFullPageLoading();
+            }
+        });
+    }
+    createNonFaustModule(factory, moduleJson) {
+        //moduleParams x,y,
+        console.log("Creating non DSP module");
+        // module.moduleFaust.setSource(moduleParams.sourceCode);
+        if (moduleJson.moduleType === "audio_loader") {
+            let module = new ModuleClass(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); }, this.compileFaust);
+            module.createDSP(factory, () => __awaiter(this, void 0, void 0, function* () {
+                module.moduleFaust.setSource("process=_,_;");
+                // todo : other types of external functions
+                //        next : sequencer
+                //Code for audio file sample 
+                // todo : move this to its own function, class, or factory?
+                // todo : gui elements for sample name/path
+                //          error handling if path no good
+                //          sample start, duration, loop
+                // todo : make sure nodes get deleted
+                var sample = document.createElement("div");
+                sample.id = moduleJson.path;
+                sample.audioNode = yield this.loadAudioFile(moduleJson.path);
+                sample.audioNode.loop = true;
+                sample.audioNode.start();
+                module.moduleView.fModuleContainer.appendChild(sample);
+                var connect = new Connector();
+                connect.connectSample(module, sample);
+                module.setFaustInterfaceControles();
+                module.createFaustInterface();
+                module.addInputOutputNodes();
+                // the current scene add the module and hide the loading page
+                Utilitary.currentScene.addModule(module);
+                if (!Utilitary.currentScene.isInitLoading) {
+                    Utilitary.hideFullPageLoading();
+                }
+            }));
+        }
+        else if (moduleJson.moduleType === "midi_reader") {
+            let module = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); });
+            module.setFaustInterfaceControles();
+            module.createFaustInterface();
+            module.addInputOutputNodes();
+            module.loadAndPlay();
+            // the current scene add the module and hide the loading page
+            Utilitary.currentScene.addModule(module);
+            if (!Utilitary.currentScene.isInitLoading) {
+                Utilitary.hideFullPageLoading();
+            }
+        }
+        else if (moduleJson.moduleType === "CompositionModule") {
+            let module = new CompositionModule(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); }, moduleJson, (module) => {
+                module.setFaustInterfaceControles();
+                module.createFaustInterface();
+                module.addInputOutputNodes();
+                // the current scene add the module and hide the loading page
+                Utilitary.currentScene.addModule(module);
+                if (!Utilitary.currentScene.isInitLoading) {
+                    Utilitary.hideFullPageLoading();
+                }
+            });
+        }
+    }
+    loadAudioFile(path) {
+        return __awaiter(this, void 0, void 0, function* () {
+            console.log("Loading :" + path);
+            try {
+                const node = yield fetch(path)
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => Utilitary.audioContext.decodeAudioData(arrayBuffer))
+                    .then(audioBuffer => {
+                    let sourceNode = Utilitary.audioContext.createBufferSource();
+                    sourceNode.buffer = audioBuffer;
+                    return sourceNode;
+                }).catch(e => console.error(e));
+                return node;
+            }
+            catch (err) {
+                console.log(err);
             }
         });
     }
@@ -5640,22 +7397,45 @@ class App {
     //used for Url pointing at a dsp file
     uploadUrl(app, module, x, y, url) {
         var filename = url.toString().split('/').pop();
+        var extension = filename.toString().split('.').pop();
         filename = filename.toString().split('.').shift();
-        Utilitary.getXHR(url, (codeFaust) => {
-            var dsp_code = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
-            if (module == null) {
-                app.compileFaust({ name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
-            }
-            else {
-                module.update(filename, dsp_code);
-            }
-        }, Utilitary.errorCallBack);
+        if (extension == "dsp") {
+            Utilitary.getXHR(url, (codeFaust) => {
+                var dsp_code = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
+                if (module == null) {
+                    app.compileFaust({ isPoly: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+                }
+                else {
+                    module.update(filename, dsp_code);
+                }
+            }, Utilitary.errorCallBack);
+        }
+        else if (extension == "polydsp") {
+            Utilitary.getXHR(url, (codeFaust) => {
+                var dsp_code = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
+                if (module == null) {
+                    app.compileFaust({ isPoly: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+                }
+                else {
+                    module.isPoly = true;
+                    module.update(filename, dsp_code);
+                }
+            }, Utilitary.errorCallBack);
+        }
+        else if (extension == "json") {
+            Utilitary.getXHR(url, (codeFaust) => {
+                let moduleJson = JSON.parse(codeFaust);
+                app.compileFaust({ isPoly: false, name: filename, sourceCode: "process=_,_;", x: x, y: y, callback: (factory) => { app.createNonFaustModule(factory, moduleJson); } });
+                //app.createNonFaustModule({ name:filename, sourceCode:codeFaust, x:x, y:y})
+            }, Utilitary.errorCallBack);
+        }
     }
     // used for dsp code faust
     uploadCodeFaust(app, module, x, y, e, dsp_code) {
         dsp_code = "process = vgroup(\"" + "TEXT" + "\",environment{" + dsp_code + "}.process);";
+        //todo figure if ispoly
         if (!module) {
-            app.compileFaust({ name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+            app.compileFaust({ isPoly: false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
         }
         else {
             module.update("TEXT", dsp_code);
@@ -5682,19 +7462,35 @@ class App {
             type = "json";
             reader.readAsText(file);
         }
+        else if (ext == ".polydsp") {
+            type = "poly";
+            reader.readAsText(file);
+        }
         else {
             throw new Error(Utilitary.messageRessource.errorObjectNotFaustCompatible);
         }
         reader.onloadend = (e) => {
             dsp_code = "process = vgroup(\"" + filename + "\",environment{" + reader.result + "}.process);";
-            if (!module && type == "dsp") {
-                this.compileFaust({ name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
+            if (!module) {
+                if (type == "dsp") {
+                    this.compileFaust({ isPoly: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
+                }
+                else if (type == "poly") {
+                    this.compileFaust({ isPoly: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
+                }
             }
-            else if (type == "dsp") {
-                module.update(filename, dsp_code);
-            }
-            else if (type == "json") {
-                Utilitary.currentScene.recallScene(reader.result);
+            else {
+                if (type == "dsp") {
+                    module.isPoly = false;
+                    module.update(filename, dsp_code);
+                }
+                else if (type == "json") {
+                    Utilitary.currentScene.recallScene(reader.result);
+                }
+                else if (type == "poly") {
+                    module.isPoly = true;
+                    module.update(filename, dsp_code);
+                }
             }
         };
     }

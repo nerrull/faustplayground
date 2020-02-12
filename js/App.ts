@@ -10,6 +10,7 @@ Create Factories and Modules
 
 */
 /// <reference path="Scenes/SceneClass.ts"/>
+/// <reference path="Modules/CompositionModule.ts"/>
 /// <reference path="Modules/ModuleClass.ts"/>
 /// <reference path="Modules/ModuleView.ts"/>
 /// <reference path="Modules/ModuleFaust.ts"/>
@@ -36,6 +37,14 @@ Create Factories and Modules
 /// <reference path="Lib/perfectScrollBar/js/perfect-ScrollBar.min.d.ts"/>
 
 //object containg info necessary to compile faust code
+
+class JSONModuleDescription {
+    name: string;
+    path: string;
+    file: string;
+
+    moduleType: string;
+}
 
 class App {
     menu: Menu;
@@ -107,9 +116,47 @@ class App {
         var libpath = location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/')) + "/faustlibraries/";
         var args: string[] = ["-I", libpath, "-ftz", "2"];
 
+        console.log("trying to compile file" + compileFaust);
+        //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
+        //check if it's an
+        try {
+            //todo make poly work
+            if (compileFaust.isPoly){
+                this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => { 
+                    factory.isPoly=true;
+                    compileFaust.callback(factory) });
+            }
+            else{
+                this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => { 
+                    factory.isPoly=false;
+                    compileFaust.callback(factory) });
+            }
+        } catch (error) {
+            new Message(error)
+        }
+
+        if (currentScene) { currentScene.unmuteScene() };
+    }
+
+    
+    compileNotFaust(compileFaust: CompileFaust) {
+      
+        //  Temporarily Saving parameters of compilation
+        this.tempModuleName = compileFaust.name;
+        this.tempModuleSourceCode = compileFaust.sourceCode;
+        this.tempModuleX = compileFaust.x;
+        this.tempModuleY = compileFaust.y;
+
+        var currentScene: Scene = Utilitary.currentScene;
+
+        if (currentScene) { currentScene.muteScene() };
+
+        //locate libraries used in libfaust compiler
+    
+        console.log("Loading non-FAUST module : " +  compileFaust.name);
         //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
         try {
-            this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => { compileFaust.callback(factory) });
+
         } catch (error) {
             new Message(error)
         }
@@ -132,7 +179,10 @@ class App {
         module.createDSP(factory, () => {
         	module.setFaustInterfaceControles();
         	module.createFaustInterface();
-        	module.addInputOutputNodes();
+            module.addInputOutputNodes();
+            if (module.isPoly){
+                module.addMidiControlNode();
+            }
 
        	 	//set listener to recompile when dropping faust code on the module
        	 	if (this.tempModuleName != "input" && this.tempModuleName != "output") {
@@ -156,6 +206,106 @@ class App {
             	Utilitary.hideFullPageLoading()
         	}
         });
+    }
+
+
+    private createNonFaustModule(factory : Factory, moduleJson:JSONModuleDescription): void {
+        //moduleParams x,y,
+        console.log("Creating non DSP module")
+
+        // module.moduleFaust.setSource(moduleParams.sourceCode);
+        if (moduleJson.moduleType === "audio_loader"){
+            let module: ModuleClass = new ModuleClass(Utilitary.idX++, this.tempModuleX,
+                this.tempModuleY, this.tempModuleName, 
+                document.getElementById("modules"), 
+                (module) => { Utilitary.currentScene.removeModule(module) }, 
+                this.compileFaust);
+            module.createDSP(factory, async () => {
+                module.moduleFaust.setSource("process=_,_;");
+                // todo : other types of external functions
+                //        next : sequencer
+
+                //Code for audio file sample 
+                // todo : move this to its own function, class, or factory?
+                // todo : gui elements for sample name/path
+                //          error handling if path no good
+                //          sample start, duration, loop
+                // todo : make sure nodes get deleted
+                var sample = <IHTMLDivElementSample>document.createElement("div");
+                sample.id = moduleJson.path;
+                sample.audioNode = await this.loadAudioFile(moduleJson.path);
+                sample.audioNode.loop =true;
+                sample.audioNode.start();
+                module.moduleView.fModuleContainer.appendChild(sample)
+    
+                var connect: Connector = new Connector();
+                connect.connectSample(module, sample);
+    
+                module.setFaustInterfaceControles();
+                
+                module.createFaustInterface();
+                module.addInputOutputNodes();
+                
+                // the current scene add the module and hide the loading page
+                Utilitary.currentScene.addModule(module);
+                if (!Utilitary.currentScene.isInitLoading) {
+                    Utilitary.hideFullPageLoading()
+                }
+            });
+        }
+
+        else if (moduleJson.moduleType === "midi_reader"){
+            let module: ModuleMIDIReader = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX,
+                this.tempModuleY, this.tempModuleName, 
+                document.getElementById("modules"), 
+                (module) => { Utilitary.currentScene.removeModule(module) });
+            module.setFaustInterfaceControles();
+            module.createFaustInterface();
+            module.addInputOutputNodes();
+            module.loadAndPlay();
+            // the current scene add the module and hide the loading page
+            Utilitary.currentScene.addModule(module);
+            if (!Utilitary.currentScene.isInitLoading) {
+                Utilitary.hideFullPageLoading()
+            }
+        }
+
+        else if (moduleJson.moduleType === "CompositionModule"){
+            let module: CompositionModule = new CompositionModule(Utilitary.idX++, this.tempModuleX,
+                this.tempModuleY, this.tempModuleName, 
+                document.getElementById("modules"), 
+                (module) => { Utilitary.currentScene.removeModule(module) }, moduleJson, (module) =>{
+                    module.setFaustInterfaceControles();
+                    module.createFaustInterface();
+                    module.addInputOutputNodes();
+                    // the current scene add the module and hide the loading page
+                    Utilitary.currentScene.addModule(module);
+                    if (!Utilitary.currentScene.isInitLoading) {
+                        Utilitary.hideFullPageLoading()
+                    }
+                }
+                );
+        }
+        
+    }
+
+    async loadAudioFile( path ): Promise<AudioBufferSourceNode>{
+        console.log("Loading :" + path);
+
+        try {
+            const node = await fetch(path)
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => Utilitary.audioContext.decodeAudioData(arrayBuffer))
+            .then(audioBuffer => {
+                let sourceNode = Utilitary.audioContext.createBufferSource();
+                sourceNode.buffer = audioBuffer;
+                return sourceNode;
+            }).catch(e => console.error(e));
+            return node;
+          } 
+          catch (err) {
+            console.log(err)
+        }
     }
 
     /********************************************************************
@@ -257,24 +407,49 @@ class App {
 
     //used for Url pointing at a dsp file
     uploadUrl(app: App, module: ModuleClass, x: number, y: number, url: string) {
-        var filename: string = url.toString().split('/').pop();
-        filename = filename.toString().split('.').shift();
-        Utilitary.getXHR(url, (codeFaust)=>{
-            var dsp_code: string = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
 
-            if (module == null) {
-                app.compileFaust({ name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
-            } else {
-                 module.update(filename, dsp_code);
-            }
-        }, Utilitary.errorCallBack)
+        var filename: string = url.toString().split('/').pop();
+        var extension = filename.toString().split('.').pop()
+        filename = filename.toString().split('.').shift();
+        if (extension == "dsp"){
+            Utilitary.getXHR(url, (codeFaust)=>{
+                var dsp_code: string = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
+
+                if (module == null) {
+                    app.compileFaust({isPoly: false,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
+                } else {
+                    module.update(filename, dsp_code);
+                }
+            }, Utilitary.errorCallBack)
+        }
+        else if (extension == "polydsp"){
+            Utilitary.getXHR(url, (codeFaust)=>{
+                var dsp_code: string = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
+
+                if (module == null) {
+                    app.compileFaust({isPoly: true,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
+                } else {
+                    module.isPoly = true;
+                    module.update(filename, dsp_code);
+                }
+            }, Utilitary.errorCallBack)
+        }
+        else if(extension == "json") {
+            Utilitary.getXHR(url, (codeFaust)=>{
+                let moduleJson = JSON.parse(codeFaust); 
+                app.compileFaust({isPoly: false,   name:filename, sourceCode: "process=_,_;", x:x, y:y, callback:(factory) => { app.createNonFaustModule(factory, moduleJson) }});
+                //app.createNonFaustModule({ name:filename, sourceCode:codeFaust, x:x, y:y})
+            }, Utilitary.errorCallBack)
+        }
     }
 
     // used for dsp code faust
     uploadCodeFaust(app: App, module: ModuleClass, x: number, y: number, e: DragEvent, dsp_code:string) {
         dsp_code = "process = vgroup(\"" + "TEXT" + "\",environment{" + dsp_code + "}.process);";
+
+        //todo figure if ispoly
         if (!module) {
-            app.compileFaust({ name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory) }});
+            app.compileFaust({ isPoly:false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory) }});
         } else {
             module.update("TEXT", dsp_code);
         }
@@ -301,6 +476,9 @@ class App {
         } else if (ext == "json"||ext=="jfaust") {
             type = "json";
             reader.readAsText(file);
+        } else if (ext == ".polydsp") {
+            type = "poly";
+            reader.readAsText(file);
         } else {
             throw new Error(Utilitary.messageRessource.errorObjectNotFaustCompatible);
         }
@@ -308,12 +486,24 @@ class App {
         reader.onloadend =(e)=>{
             dsp_code = "process = vgroup(\"" + filename + "\",environment{" + reader.result + "}.process);";
 
-            if (!module && type == "dsp") {
-                this.compileFaust({ name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
-            } else if (type == "dsp") {
-                module.update(filename, dsp_code);
-            } else if (type == "json") {
-                Utilitary.currentScene.recallScene(reader.result);
+            if (!module ){
+                if( type == "dsp") {
+                    this.compileFaust({ isPoly :false, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
+                }
+                else if (type == "poly") {
+                    this.compileFaust({ isPoly :true, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
+                }
+            }
+            else{
+                if (type == "dsp") {
+                    module.isPoly= false;
+                    module.update(filename, dsp_code);
+                } else if (type == "json") {
+                    Utilitary.currentScene.recallScene(reader.result);
+                } else if (type == "poly") {
+                    module.isPoly= true;
+                    module.update(filename, dsp_code);
+                }
             }
         };
     }
@@ -340,7 +530,7 @@ class App {
         this.menu.menuView.menuContainer.classList.add("no_pointer");
         Utilitary.currentScene.sceneView.dropElementScene.style.display = "block";
         Utilitary.currentScene.getSceneContainer().style.boxShadow = "0 0 200px #00f inset";
-        var modules: ModuleClass[] = Utilitary.currentScene.getModules();
+        var modules: GraphicalModule[] = Utilitary.currentScene.getModules();
         for (var i = 0; i < modules.length; i++) {
             modules[i].moduleView.fModuleContainer.style.opacity="0.5"
         }
@@ -351,7 +541,7 @@ class App {
         this.menu.menuView.menuContainer.style.opacity = "1";
         Utilitary.currentScene.sceneView.dropElementScene.style.display = "none";
         Utilitary.currentScene.getSceneContainer().style.boxShadow = "none";
-        var modules: ModuleClass[] = Utilitary.currentScene.getModules();
+        var modules: GraphicalModule[] = Utilitary.currentScene.getModules();
         for (var i = 0; i < modules.length; i++) {
             modules[i].moduleView.fModuleContainer.style.opacity = "1";
             modules[i].moduleView.fModuleContainer.style.boxShadow ="0 5px 10px rgba(0, 0, 0, 0.4)"

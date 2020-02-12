@@ -54,13 +54,15 @@ class Library{
 
     //get json with library infos
     fillLibrary() {
-        var url: string = "faust-modules/index.json"
+        var url: string = "faust-modules/modules.json"
+        console.log("Filling lib")
         Utilitary.getXHR(url, (json: string) => { this.fillLibraryCallBack(json) }, (errorMessage: string) => { Utilitary.errorCallBack(errorMessage) });
     }
 
     //dispatch library info to each submenu
     fillLibraryCallBack(json: string) {
         var jsonObject: jsonObjectLibrary = JSON.parse(json);
+        console.log(jsonObject)
         jsonObject.effet = "effetLibrarySelect";
         jsonObject.effetSupprStructure = "faust-modules/effects/";
         jsonObject.instrument = "instrumentLibrarySelect";
@@ -70,6 +72,8 @@ class Library{
         this.fillSubMenu(jsonObject.instruments, jsonObject.instrument, jsonObject.instrumentSupprStructure);
         this.fillSubMenu(jsonObject.effets, jsonObject.effet, jsonObject.effetSupprStructure);
         this.fillSubMenu(jsonObject.exemples, jsonObject.exemple, jsonObject.exempleSupprStructure);
+        //this.fillSubMenu(["ass"], "cock","shit");
+
     }
 
     //fill submenu and attach events

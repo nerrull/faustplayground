@@ -18,7 +18,7 @@ class Scene {
     fAudioOutput: ModuleClass;
     fAudioInput: ModuleClass;
     //-- Modules contained in the scene
-    private fModuleList: ModuleClass[] = [];
+    private fModuleList: GraphicalModule[] = [];
     //-- Graphical Scene container
     sceneView: SceneView;
     sceneName: string = "Patch";
@@ -104,9 +104,9 @@ class Scene {
     }
 
     /******************** HANDLE MODULES IN SCENE ************************/
-    getModules(): ModuleClass[] { return this.fModuleList; }
-    addModule(module: ModuleClass): void { this.fModuleList.push(module); }
-    removeModule(module: ModuleClass): void {
+    getModules(): GraphicalModule[] { return this.fModuleList; }
+    addModule(module: GraphicalModule): void { this.fModuleList.push(module); }
+    removeModule(module: GraphicalModule): void {
         this.fModuleList.splice(this.fModuleList.indexOf(module), 1);
     }
 
@@ -122,7 +122,7 @@ class Scene {
         this.fAudioInput = new ModuleClass(Utilitary.idX++, positionInput.x, positionInput.y, "input", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module) }, this.compileFaust);
         this.fAudioInput.patchID = "input";
         var scene: Scene = this;
-        this.compileFaust({ name:"input", sourceCode:"process=_,_;", x:positionInput.x, y:positionInput.y, callback:(factory)=>{ scene.integrateAudioInput(factory) }});
+        this.compileFaust({ isPoly: false, name:"input", sourceCode:"process=_,_;", x:positionInput.x, y:positionInput.y, callback:(factory)=>{ scene.integrateAudioInput(factory) }});
     }
 
     integrateOutput() {
@@ -131,7 +131,7 @@ class Scene {
         this.fAudioOutput = new ModuleClass(Utilitary.idX++, positionOutput.x, positionOutput.y, "output", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module) }, this.compileFaust);
         this.fAudioOutput.patchID = "output";
         this.addMuteOutputListner(this.fAudioOutput);
-        this.compileFaust({ name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory) } });
+        this.compileFaust({ isPoly: false, name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory) } });
     }
 
     private integrateAudioOutput(factory: Factory): void {
@@ -218,19 +218,21 @@ class Scene {
 
         var json: string
         var jsonObjectCollection: JsonSaveCollection = {};
-
+        //TODO make this more generic for different interface elements
+        //Make getting the JSON a method of the fucking module
         for (var i = 0; i < this.fModuleList.length; i++) {
             if (this.fModuleList[i].patchID != "output" && this.fModuleList[i].patchID != "input") {
                 jsonObjectCollection[this.fModuleList[i].patchID.toString()] = new JsonSaveModule();
+                let module = this.fModuleList[i] as ModuleClass
                 var jsonObject = jsonObjectCollection[this.fModuleList[i].patchID.toString()];
                 jsonObject.sceneName = this.sceneName;
-                jsonObject.patchId = this.fModuleList[i].patchID.toString();
-                jsonObject.code = this.fModuleList[i].moduleFaust.getSource();
-                jsonObject.name = this.fModuleList[i].moduleFaust.getName();
-                jsonObject.x = this.fModuleList[i].moduleView.getModuleContainer().getBoundingClientRect().left.toString();
-                jsonObject.y = this.fModuleList[i].moduleView.getModuleContainer().getBoundingClientRect().top.toString()
+                jsonObject.patchId = module.patchID.toString();
+                jsonObject.code = module.moduleFaust.getSource();
+                jsonObject.name = module.moduleFaust.getName();
+                jsonObject.x = module.moduleView.getModuleContainer().getBoundingClientRect().left.toString();
+                jsonObject.y = module.moduleView.getModuleContainer().getBoundingClientRect().top.toString()
 
-                var inputs: Connector[] = this.fModuleList[i].moduleFaust.getInputConnections();
+                var inputs: Connector[] = module.moduleFaust.getInputConnections();
                 var jsonInputs: JsonInputsSave = new JsonInputsSave();
                 jsonInputs.source = [];
                 if (inputs) {
@@ -239,7 +241,7 @@ class Scene {
                     }
                 }
 
-                var outputs = this.fModuleList[i].moduleFaust.getOutputConnections();
+                var outputs = module.moduleFaust.getOutputConnections();
                 var jsonOutputs: JsonOutputsSave = new JsonOutputsSave();
                 jsonOutputs.destination = [];
 
@@ -249,14 +251,14 @@ class Scene {
                     }
                 }
 
-                var params = this.fModuleList[i].moduleFaust.getDSP().getParams();
+                var params = module.moduleFaust.getDSP().getParams();
                 var jsonParams: JsonParamsSave = new JsonParamsSave();
                 jsonParams.sliders = []
                 if (params) {
                     for (var j = 0; j < params.length; j++) {
                         var jsonSlider: JsonSliderSave = new JsonSliderSave();
                         jsonSlider.path = params[j];
-                        jsonSlider.value = this.fModuleList[i].moduleFaust.getDSP().getParamValue(params[j]);
+                        jsonSlider.value = module.moduleFaust.getDSP().getParamValue(params[j]);
                         jsonParams.sliders.push(jsonSlider);
                     }
 
@@ -282,7 +284,7 @@ class Scene {
                 jsonObject.params = jsonParams;
                 jsonObject.acc = jsonAccs;
 
-                var factorySave: JsonFactorySave = faust.writeDSPFactoryToMachine(this.fModuleList[i].moduleFaust.factory);
+                var factorySave: JsonFactorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
 
                 if (factorySave && isPrecompiled) {
                     jsonObject.factory = new JsonFactorySave();
@@ -341,7 +343,8 @@ class Scene {
             } else if (jsonObject.patchId != "output" && jsonObject.patchId != "input") {
                 this.tempPatchId = jsonObject.patchId;
                 this.sceneName = jsonObject.sceneName;
-                var argumentCompile = { name:jsonObject.name,sourceCode: jsonObject.code,x: parseFloat(jsonObject.x),y: parseFloat(jsonObject.y), callback:(factory) => { this.createModule(factory) }}
+                //todo: get ispoly or not
+                var argumentCompile = { isPoly: false, name:jsonObject.name,sourceCode: jsonObject.code,x: parseFloat(jsonObject.x),y: parseFloat(jsonObject.y), callback:(factory) => { this.createModule(factory) }}
                 this.compileFaust(argumentCompile);
             } else {
                 this.arrayRecalScene.shift();
@@ -464,7 +467,7 @@ class Scene {
                 var moduleSource = this.getModuleByPatchId(module.moduleFaust.recallInputsSource[i]);
                 if (moduleSource != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(moduleSource, moduleSource.moduleView.getOutputNode(), module, module.moduleView.getInputNode());
+                    connector.createConnection(moduleSource as ModuleClass, moduleSource.moduleView.getOutputNode(), module, module.moduleView.getInputNode());
                 }
             }
 
@@ -472,7 +475,7 @@ class Scene {
                 var moduleDestination = this.getModuleByPatchId(module.moduleFaust.recallOutputsDestination[i]);
                 if (moduleDestination != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(module, module.moduleView.getOutputNode(), moduleDestination, moduleDestination.moduleView.getInputNode());
+                    connector.createConnection(module, module.moduleView.getOutputNode(), moduleDestination as ModuleClass, moduleDestination.moduleView.getInputNode());
                 }
             }
         } catch (e) {
@@ -481,7 +484,7 @@ class Scene {
     }
 
     //use to identify the module to be connected to when recalling connections between modules
-    getModuleByPatchId(patchId: string): ModuleClass {
+    getModuleByPatchId(patchId: string): GraphicalModule {
         if (patchId == "output") {
             return this.fAudioOutput;
         } else if (patchId == "input") {

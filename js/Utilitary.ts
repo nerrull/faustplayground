@@ -92,6 +92,19 @@ class Utilitary {
     static replaceAll(str: String, find: string, replace: string) {
         return str.replace(new RegExp(find, 'g'), replace);
     }
+
+    static getDataDir():string{
+        return "../data/"
+    }
+
+    static getCompositionDir():string{
+        return Utilitary.getDataDir() + "comp/"
+    }
+
+    static getMidiDir():string{
+        return  Utilitary.getDataDir() + "midi/"
+    }
+
 }
 /********************************************************************
 **************************  interfaces  *****************************
@@ -111,9 +124,16 @@ class PositionModule implements IPositionModule {
     y: number;
 }
 
+
 interface IHTMLDivElementSrc extends HTMLDivElement {
     audioNode: MediaStreamAudioSourceNode;
 }
+
+
+interface IHTMLDivElementSample extends HTMLDivElement {
+    audioNode: AudioBufferSourceNode;
+}
+
 interface IHTMLDivElementOut extends HTMLDivElement {
     audioNode: AudioDestinationNode;
 }
@@ -121,6 +141,7 @@ interface Factory {
     name: string;
     sha_key: string;
     code: string;
+    isPoly: boolean
 }
 interface HTMLInterfaceContainer extends HTMLDivElement {
     unlitClassname: string;
@@ -133,6 +154,8 @@ interface IfDSP extends AudioNode {
     getNumInputs: () => number;
     getNumOutputs: () => number;
     getParams: () => any;
+    keyOn: (channel: number, pitch: number, velocity:number) => void;
+    
 }
 
 interface CompileFaust {
@@ -140,5 +163,19 @@ interface CompileFaust {
     sourceCode: string,
     x: number,
     y: number,
+    isPoly: boolean, 
     callback: (factory: Factory) => void
+}
+
+
+class AudioUtils{
+    
+    static midiToFreq = function (note)
+    {
+        return 440.0 * Math.pow(2.0, (note - 69.0) / 12.0);
+    }
+    static normalizeVelocity = function (v)
+    {
+        return v/128.0;
+    }
 }
