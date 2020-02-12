@@ -13,10 +13,19 @@ class ModuleFaust {
     fTempName: string;
     fOutputConnections: Connector[] = [];
     fInputConnections: Connector[] = [];
+    pOutputConnections: Connector[] = [];
+    pInputConnections: Connector[] = [];
     recallOutputsDestination: string[]=[];
     recallInputsSource: string[]=[];
+
     constructor(name: string) {
         this.fName = name;
+    }
+
+    getBaseAdressPath() :string{
+        let p =  this.fDSP.inputs_items[0].split("/");
+        p.pop();
+        return p.join("/")
     }
 
     /*************** ACTIONS ON IN/OUTPUT MODULES ***************************/
@@ -42,6 +51,21 @@ class ModuleFaust {
     removeInputConnection(connector: Connector): void {
         this.fInputConnections.splice(this.fInputConnections.indexOf(connector), 1);
     }
+
+    addParameterOutputConnection(connector: Connector): void {
+        this.pOutputConnections.push(connector);
+    }
+    addParameterInputConnection(connector: Connector): void {
+        this.pInputConnections.push(connector);
+    }
+
+    removeParameterOutputConnection(connector: Connector): void {
+        this.pOutputConnections.splice(this.pOutputConnections.indexOf(connector), 1);
+    }
+    removeParameterInputConnection(connector: Connector): void {
+        this.pInputConnections.splice(this.pInputConnections.indexOf(connector), 1);
+    }
+
     /********************** GET/SET SOURCE/NAME/DSP ***********************/
     setSource(code: string): void {
         this.fSource = code;

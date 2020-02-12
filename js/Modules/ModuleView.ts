@@ -30,6 +30,10 @@ class ModuleView {
     fTitle: HTMLElement;
     fInputNode: HTMLDivElement;
     fOutputNode: HTMLDivElement;
+    fMidiNode: HTMLDivElement;
+
+    fParameterInputNodes: Array<HTMLDivElement>;
+    fParameterOutputNodes: Array<HTMLDivElement>;
     contentModule: HTMLElement;
     textArea: HTMLTextAreaElement;
     miniButton: HTMLDivElement;
@@ -134,6 +138,7 @@ class ModuleView {
         this.fInputNode.appendChild(spanNode);
         this.fModuleContainer.appendChild(this.fInputNode);
     }
+
     setOutputNode():void{
         this.fOutputNode = document.createElement("div");
         this.fOutputNode.className = "node node-output";
@@ -144,6 +149,18 @@ class ModuleView {
         this.fOutputNode.appendChild(spanNode);
         this.fModuleContainer.appendChild(this.fOutputNode);
     }
+
+    setMidiNode():void{
+        this.fMidiNode = document.createElement("div");
+        this.fMidiNode.className = "node node-input midi-input";
+        this.fMidiNode.draggable = false;
+        var spanNode: HTMLSpanElement = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.fMidiNode.appendChild(spanNode);
+        this.fModuleContainer.appendChild(this.fMidiNode);
+    }
+
     deleteInputOutputNodes(): void {
         if (this.fInputNode) {
             this.fModuleContainer.removeChild(this.fInputNode);
@@ -176,4 +193,23 @@ class ModuleView {
         }
         return false;
     }
+
+    // setParameterInputNodes(inputs): void {
+    //     let numInputs = inputs.size();
+
+    //     for(let i = 0; i<inputs.size(); i++){
+    //         let node = inputs[i]
+    //         let tempNode = document.createElement("div");
+    //         tempNode.className = "parameter-node  parameter-node-input";
+    //         tempNode.draggable = false;
+    //         let spanNode: HTMLSpanElement = document.createElement("span");
+    //         spanNode.draggable = false;
+    //         spanNode.className = "node-button";
+    //         tempNode.appendChild(spanNode);
+    //         this.fModuleContainer.appendChild(tempNode);
+    //         this.fParameterInputNodes.push(tempNode)
+    //     }
+    // }
+
+
 }

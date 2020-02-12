@@ -1,5 +1,4 @@
-    /// <reference path="../Accelerometer.ts"/>
-    /// <reference path="../Utilitary.ts"/>
+/// <reference path="../Utilitary.ts"/>
 
 /*				FAUSTINTERFACE.JS
 
@@ -65,9 +64,9 @@ class FaustInterfaceControler {
     accDefault: string = "0 0 -10 0 10";
     acc: string;
     value: string;
+    valueChangeCallbacks: { [address: string] : Function; };
     accParams: AccParams;
 
-    accelerometerSlider: AccelerometerSlider;
     faustInterfaceView: FaustInterfaceView;
 
     interfaceCallback: (faustInterfaceControler: FaustInterfaceControler) => void;
@@ -78,7 +77,9 @@ class FaustInterfaceControler {
     constructor(interfaceCallback: (faustInterfaceControler: FaustInterfaceControler) => void, setDSPValueCallback: (address: string, value: string) => void) {
         this.interfaceCallback = interfaceCallback;
         this.setDSPValueCallback = setDSPValueCallback;
+        this.valueChangeCallbacks = {};
     }
+
     //parse interface json from faust webaudio-asm-wrapper to create corresponding FaustInterfaceControler
     parseFaustJsonUI(ui: Iitems[], module: ModuleClass): FaustInterfaceControler[] {
         this.faustControlers = [];
@@ -179,6 +180,9 @@ class FaustInterfaceControler {
             } else if (this.faustInterfaceView.type === "checkbox") {
                 return this.faustInterfaceView.addFaustCheckBox(this.itemParam.init);
             }
+            else if (this.faustInterfaceView.type === "midilabel") {
+                return this.faustInterfaceView.addFaustMidiLabel(this.itemParam);
+            }
         }
     }
 
@@ -218,68 +222,36 @@ class FaustInterfaceControler {
         }
     }
 
-    //attach acceleromterSlider to faustInterfaceControler
-    //give the acc or noacc values
-    //if no accelerometer value, it create a default noacc one
-    createAccelerometer() {
-        if (this.itemParam.meta) {
-            var meta = this.itemParam.meta
-            for (var i = 0; i < meta.length; i++) {
-                if (meta[i].acc) {
-                    this.acc = meta[i].acc;
-                    this.accParams.acc=this.acc
-                    this.accParams.isEnabled = true;
-                    AccelerometerHandler.registerAcceleratedSlider(this.accParams, this)
-                    this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value) }
-                    this.accelerometerSlider.isEnabled = true;
-                    this.faustInterfaceView.slider.classList.add("allowed");
-                    this.faustInterfaceView.group.classList.add(Axis[this.accelerometerSlider.axis])
-                    if (Utilitary.isAccelerometerOn) {
-                        this.accelerometerSlider.isActive = true;
-                        this.faustInterfaceView.slider.classList.remove("allowed");
-                        this.faustInterfaceView.slider.classList.add("not-allowed");
-                        this.faustInterfaceView.slider.disabled = true;
-                    }
-                } else if (meta[i].noacc) {
-                    this.acc = meta[i].noacc;
-                    this.accParams.acc = this.acc;
-                    this.accParams.isEnabled = false;
-                    AccelerometerHandler.registerAcceleratedSlider(this.accParams,this)
-                    this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value) }
-                    this.accelerometerSlider.isEnabled = false;
-                    this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc")
-                }
-            }
-            if (this.accelerometerSlider == undefined) {
-                this.acc = this.accDefault;
-                this.accParams.acc = this.acc;
-                this.accParams.isEnabled = false;
-                AccelerometerHandler.registerAcceleratedSlider(this.accParams, this)
-                this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value) }
-                this.accelerometerSlider.isEnabled = false;
-                if (this.faustInterfaceView.slider != undefined) {
-                    this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc")
-                }
-            }
-        } else {
-            this.acc = this.accDefault;
-            this.accParams.acc = this.acc;
-            this.accParams.isEnabled = false;
-            AccelerometerHandler.registerAcceleratedSlider(this.accParams, this)
-            this.accelerometerSlider.callbackValueChange = (address, value) => { this.callbackValueChange(address, value) }
-            this.accelerometerSlider.isEnabled = false;
-            if (this.faustInterfaceView.slider != undefined) {
-                this.faustInterfaceView.slider.parentElement.classList.add("disabledAcc")
-            }
-        }
-    }
-
+   
     //callback to update the dsp value
     callbackValueChange(address: string, value: number) {
         this.setDSPValueCallback(address, String(value));
         this.faustInterfaceView.slider.value = String((value - parseFloat(this.itemParam.min)) / parseFloat(this.itemParam.step))
         this.faustInterfaceView.output.textContent = String(value.toFixed(parseFloat(this.precision)));
+    }
 
+    static addButton(name, callback):FaustInterfaceControler{
+
+        var itemElement =  {name:name, type:"button", label:name};
+        var controler: FaustInterfaceControler = new FaustInterfaceControler(
+            (faustInterface) => { callback() },
+            (adress, value) => { }
+        );
+        controler.itemParam = itemElement;
+        controler.value = "0";
+        return controler;
+    }
+
+    static addMidiLabel(name, callback):FaustInterfaceControler{
+
+        var itemElement =  {name:name, type:"midilabel", label:name};
+        var controler: FaustInterfaceControler = new FaustInterfaceControler(
+            (faustInterface) => { callback() },
+            (adress, value) => { }
+        );
+        controler.itemParam = itemElement;
+        controler.value = "0";
+        return controler;
     }
 }
 
@@ -287,7 +259,9 @@ class FaustInterfaceControler {
 ********************* ADD GRAPHICAL ELEMENTS ***********************
 ********************************************************************/
 class FaustInterfaceView {
-    type: string;
+    type : string;
+    inputNode :HTMLDivElement;
+    outputNode : HTMLDivElement;
     slider: HTMLInputElement;
     button: HTMLInputElement;
     output: HTMLElement;
@@ -297,13 +271,16 @@ class FaustInterfaceView {
     constructor(type: string) {
         this.type = type;
     }
+
     addFaustModuleSlider(itemParam: Iitem, precision: number, unit: string): HTMLElement {
 
         var group = document.createElement("div");
+        
         group.className = "control-group";
 
         var info: HTMLDivElement = document.createElement("div");
         info.className = "slider-info";
+        info.setAttribute("parameter_address", itemParam.address);
         info.setAttribute("min", itemParam.min);
         info.setAttribute("max", itemParam.max);
         info.setAttribute("step", itemParam.step);
@@ -317,6 +294,26 @@ class FaustInterfaceView {
         val.className = "value";
         this.output = val;
 
+
+        this.inputNode = document.createElement("div");
+        this.inputNode.className = "parameter-node  parameter-node-input";
+        this.inputNode.draggable = false;
+        let spanNode: HTMLSpanElement = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.inputNode.appendChild(spanNode);
+        group.appendChild(this.inputNode)
+
+        
+        this.outputNode = document.createElement("div");
+        this.outputNode.className = "parameter-node  parameter-node-output";
+        this.outputNode.draggable = false;
+        spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.outputNode.appendChild(spanNode);
+        group.appendChild(this.outputNode)
+
         var myValue: string = Number(itemParam.init).toFixed(precision);
 
         val.appendChild(document.createTextNode("" + myValue + " " + unit));
@@ -328,16 +325,20 @@ class FaustInterfaceView {
         var high: number = (parseFloat(itemParam.max) - parseFloat(itemParam.min)) / parseFloat(itemParam.step);
 
         var slider: HTMLInputElement = document.createElement("input");
-	      slider.type="range";
-	      slider.min =  "0";
+	    slider.type="range";
+	    slider.min =  "0";
         slider.max = String(high);
         slider.value = String((parseFloat(itemParam.init) - parseFloat(itemParam.min)) / parseFloat(itemParam.step));
         slider.step = "1";
         this.slider = slider;
         group.appendChild(slider);
 
+
         this.group = group
-	      return group;
+
+        return group;
+        
+
     }
 
     addFaustCheckBox(ivalue: string): HTMLInputElement {
@@ -370,6 +371,50 @@ class FaustInterfaceView {
 
         group.appendChild(button);
 
-	      return button;
+	    return button;
+    }
+
+    
+    addFaustTextInput(itemParam: Iitem):HTMLElement {
+
+        var group = document.createElement("div");
+
+        var button = document.createElement("input");
+        button.type = "text";
+        this.button = button;
+        this.button.value = itemParam.label;
+
+        group.appendChild(button);
+	    return button;
+    }
+    
+    addFaustMidiLabel(itemParam: Iitem):HTMLElement {
+
+        var group = document.createElement("div");
+        group.className = "control-group";
+        var info: HTMLDivElement = document.createElement("div");
+        info.className = "slider-info";
+        info.setAttribute("instrument_id", itemParam.label);
+
+        var lab: HTMLSpanElement = document.createElement("span");
+        lab.className = "label";
+        lab.appendChild(document.createTextNode(itemParam.label));
+        this.label = lab;
+        info.appendChild(lab);
+
+        
+        this.outputNode = document.createElement("div");
+        this.outputNode.className = "parameter-node parameter-node-output midi-node-output";
+        this.outputNode.draggable = false;
+        let spanNode = document.createElement("span");
+        spanNode.draggable = false;
+        spanNode.className = "node-button";
+        this.outputNode.appendChild(spanNode);
+        group.appendChild(this.outputNode)
+
+        group.appendChild(info);
+        this.group =group;
+
+	    return group;
     }
 }
