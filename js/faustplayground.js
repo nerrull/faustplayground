@@ -1212,6 +1212,12 @@ class FaustInterfaceControler {
         controler.value = "0";
         return controler;
     }
+    static addSlider(name, min, max, value, step, callback) {
+        var itemElement = { type: "hslider", label: name, min: min, max: max, init: value, address: "", step: step, meta: [] };
+        var controler = new FaustInterfaceControler((faustInterface) => { }, (adress, value) => { callback(value); });
+        controler.itemParam = itemElement;
+        return controler;
+    }
 }
 /********************************************************************
 ********************* ADD GRAPHICAL ELEMENTS ***********************
@@ -2504,7 +2510,7 @@ function Replayer(midiFile, timeWarp, eventProcessor, bpm) {
             }
             ///
             var time = (secondsToGenerate * 1000 * timeWarp) || 0;
-            temporal.push([midiEvent, time]);
+            temporal.push([midiEvent, time, beatsToGenerate]);
             midiEvent = getNextEvent();
         }
         ;
@@ -2554,6 +2560,9 @@ class MIDIManager {
         this.startTime = 0; // to measure time elapse
         this.noteRegistrar = {}; // get event for requested note
         this.onMidiEvent = midiCallback;
+    }
+    setBPM(bpm) {
+        this.BPM = bpm;
     }
     start(onsuccess = null) {
         console.log("Starting midi playback of " + this.filename);
@@ -2731,23 +2740,16 @@ class MIDIManager {
         var data = this.data;
         var ctx = this.getContext();
         var length = data.length;
-        //
-        this.queuedTime = 0.5;
-        ///
+        this.queuedTime = 0.;
         var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
         var foffset = currentTime - this.currentTime;
-        // ///
-        // if (this.api !== 'webaudio') { // set currentTime on ctx
-        //     var now = getNow();
-        //     __now = __now || now;
-        //     ctx.currentTime = (now - __now) / 1000;
-        // }
-        ///
         this.startTime = ctx.currentTime;
-        ///
         for (var n = 0; n < length && messages < 100; n++) {
             var obj = data[n];
-            if ((this.queuedTime += obj[1]) <= currentTime) {
+            var midi_time = obj[1];
+            var midi_beats = obj[2];
+            var note_ms = this.beatsToSeconds(midi_beats) * 1000;
+            if ((this.queuedTime += note_ms) <= currentTime) {
                 offset = this.queuedTime;
                 continue;
             }
@@ -2846,15 +2848,9 @@ class MIDIManager {
         return totalTime;
     }
     ;
-    getNow() {
-        if (window.performance && window.performance.now) {
-            return window.performance.now();
-        }
-        else {
-            return Date.now();
-        }
+    beatsToSeconds(beats) {
+        return beats / (this.BPM / 60);
     }
-    ;
 }
 ;
 /*				ModuleMIDIReader.JS
@@ -4565,6 +4561,13 @@ class InstrumentController {
             this.isPlaying = true;
         }
     }
+    setBPM(bpm) {
+        for (let key of Object.keys(this.movementMidiControllers)) {
+            for (let c of this.movementMidiControllers[key]) {
+                c.setBPM(bpm);
+            }
+        }
+    }
     stop() {
         this.movementMidiControllers[this.currentMovement][this.currentController].stop();
         this.isPlaying = false;
@@ -4655,10 +4658,16 @@ class CompositionModule extends GraphicalModule {
     playAll() {
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
-            ic.movementIndex = this.currentMovement;
+            ic.currentMovement = this.movementIndex;
             if (!ic.isPlaying) {
                 ic.play();
             }
+        }
+    }
+    setBPM(bpm) {
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            ic.setBPM(bpm);
         }
     }
     stopAll() {
@@ -4739,6 +4748,7 @@ class CompositionModule extends GraphicalModule {
         for (let inst of this.instruments) {
             this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => { }));
         }
+        this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (value) => { this.setBPM(value); }));
         //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
     }
     // interface Iitem{
@@ -4887,7 +4897,7 @@ class Library {
     }
     //get json with library infos
     fillLibrary() {
-        var url = "faust-modules/modules.json";
+        var url = "faust-modules/modules_list.json";
         console.log("Filling lib");
         Utilitary.getXHR(url, (json) => { this.fillLibraryCallBack(json); }, (errorMessage) => { Utilitary.errorCallBack(errorMessage); });
     }
