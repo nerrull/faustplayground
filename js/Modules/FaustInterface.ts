@@ -232,7 +232,7 @@ class FaustInterfaceControler {
 
     static addButton(name, callback):FaustInterfaceControler{
 
-        var itemElement =  {name:name, type:"button", label:name};
+        var itemElement =  {type:"button", label:name};
         var controler: FaustInterfaceControler = new FaustInterfaceControler(
             (faustInterface) => { callback() },
             (adress, value) => { }
@@ -244,7 +244,7 @@ class FaustInterfaceControler {
 
     static addMidiLabel(name, callback):FaustInterfaceControler{
 
-        var itemElement =  {name:name, type:"midilabel", label:name};
+        var itemElement =  { type:"midilabel", label:name};
         var controler: FaustInterfaceControler = new FaustInterfaceControler(
             (faustInterface) => { callback() },
             (adress, value) => { }
@@ -258,8 +258,8 @@ class FaustInterfaceControler {
 
         var itemElement :Iitem =  { type:"hslider", label:name,min : min, max :max, init:value, address: "", step:step, meta:[] };
         var controler: FaustInterfaceControler = new FaustInterfaceControler(
-            (faustInterface) => { },
-            (adress, value) => { callback(value)}
+            (faustInterface) => {callback(faustInterface) },
+            (adress, value) => { }
         );
         controler.itemParam = itemElement;
         return controler;
@@ -415,7 +415,7 @@ class FaustInterfaceView {
 
         
         this.outputNode = document.createElement("div");
-        this.outputNode.className = "parameter-node parameter-node-output midi-node-output";
+        this.outputNode.className = "parameter-node parameter-node-output midi-output";
         this.outputNode.draggable = false;
         let spanNode = document.createElement("span");
         spanNode.draggable = false;

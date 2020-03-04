@@ -121,14 +121,14 @@ class App {
         //check if it's an
         try {
             //todo make poly work
-            if (compileFaust.isPoly){
+            if (compileFaust.isMidi){
                 this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => { 
-                    factory.isPoly=true;
+                    factory.isMidi=true;
                     compileFaust.callback(factory) });
             }
             else{
                 this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => { 
-                    factory.isPoly=false;
+                    factory.isMidi=false;
                     compileFaust.callback(factory) });
             }
         } catch (error) {
@@ -180,7 +180,7 @@ class App {
         	module.setFaustInterfaceControles();
         	module.createFaustInterface();
             module.addInputOutputNodes();
-            if (module.isPoly){
+            if (module.isMidi){
                 module.addMidiControlNode();
             }
 
@@ -416,7 +416,7 @@ class App {
                 var dsp_code: string = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
 
                 if (module == null) {
-                    app.compileFaust({isPoly: false,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
+                    app.compileFaust({isMidi: false,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
                 } else {
                     module.update(filename, dsp_code);
                 }
@@ -427,9 +427,9 @@ class App {
                 var dsp_code: string = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
 
                 if (module == null) {
-                    app.compileFaust({isPoly: true,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
+                    app.compileFaust({isMidi: true,  name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { app.createModule(factory) }});
                 } else {
-                    module.isPoly = true;
+                    module.isMidi = true;
                     module.update(filename, dsp_code);
                 }
             }, Utilitary.errorCallBack)
@@ -437,7 +437,7 @@ class App {
         else if(extension == "json") {
             Utilitary.getXHR(url, (codeFaust)=>{
                 let moduleJson = JSON.parse(codeFaust); 
-                app.compileFaust({isPoly: false,   name:filename, sourceCode: "process=_,_;", x:x, y:y, callback:(factory) => { app.createNonFaustModule(factory, moduleJson) }});
+                app.compileFaust({isMidi: false,   name:filename, sourceCode: "process=_,_;", x:x, y:y, callback:(factory) => { app.createNonFaustModule(factory, moduleJson) }});
                 //app.createNonFaustModule({ name:filename, sourceCode:codeFaust, x:x, y:y})
             }, Utilitary.errorCallBack)
         }
@@ -447,9 +447,8 @@ class App {
     uploadCodeFaust(app: App, module: ModuleClass, x: number, y: number, e: DragEvent, dsp_code:string) {
         dsp_code = "process = vgroup(\"" + "TEXT" + "\",environment{" + dsp_code + "}.process);";
 
-        //todo figure if ispoly
         if (!module) {
-            app.compileFaust({ isPoly:false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory) }});
+            app.compileFaust({ isMidi:false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory) }});
         } else {
             module.update("TEXT", dsp_code);
         }
@@ -488,20 +487,20 @@ class App {
 
             if (!module ){
                 if( type == "dsp") {
-                    this.compileFaust({ isPoly :false, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
+                    this.compileFaust({ isMidi :false, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
                 }
                 else if (type == "poly") {
-                    this.compileFaust({ isPoly :true, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
+                    this.compileFaust({ isMidi :true, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
                 }
             }
             else{
                 if (type == "dsp") {
-                    module.isPoly= false;
+                    module.isMidi= false;
                     module.update(filename, dsp_code);
                 } else if (type == "json") {
                     Utilitary.currentScene.recallScene(reader.result);
                 } else if (type == "poly") {
-                    module.isPoly= true;
+                    module.isMidi= true;
                     module.update(filename, dsp_code);
                 }
             }

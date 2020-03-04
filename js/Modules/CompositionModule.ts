@@ -26,14 +26,15 @@ interface iComposition{
 //Todo, delete callback targets on cable deletion
 class InstrumentController{
     name: string;
-    movementMidiControllers : {number:MIDIManager[]};
+    movementMidiControllers : {[id:number] : MIDIManager[]};
     fileLoaded : boolean;
     numbars : number;
-    currentMovement : 0;
-    currentController : 0;
+    currentMovement : number ;
+    currentController : number;
     connectors : Connector[];
     isPlaying :boolean;
     callbackTargets :Function[];   
+
     
     constructor(name:string, n_movements:number){
         this.name = name;
@@ -58,7 +59,7 @@ class InstrumentController{
         // }
     }
     midiCallback(midiInfo){
-        console.log (`${this.name} - MIDI event: ${midiInfo}`);
+        // console.log (`${Utilitary.audioContext.currentTime} :${this.name} - MIDI event: ${midiInfo.note}`);
         var cbtl = this.callbackTargets.length
         if ( cbtl>0){
             for (let i =0; i<cbtl; i++){
@@ -81,7 +82,11 @@ class InstrumentController{
         console.log(this.name + " failed to load file : "+ filename)
         this.fileLoaded =false;
     }
-    
+
+    readMidi(){
+        this.movementMidiControllers[this.currentMovement][this.currentController].readMidi();
+    }
+
     play():void{
         console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`)
         let movementLength = this.movementMidiControllers[this.currentMovement].length;
@@ -89,8 +94,8 @@ class InstrumentController{
             if (this.currentController >=movementLength||this.currentController<0){
                 this.currentController =0;
             }
-            this.movementMidiControllers[this.currentMovement][this.currentController].start();
-            this.isPlaying = true;
+            
+            this.isPlaying = this.movementMidiControllers[this.currentMovement][this.currentController].start();;
         }
     }
 
@@ -101,9 +106,26 @@ class InstrumentController{
             }
         }
     }
+
+    getBeat():number{
+        return this.movementMidiControllers[this.currentMovement][this.currentController].currentBeat;
+    }
+
+    getBeatTime():number{
+        if (this.isPlaying)
+            return this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime;
+        return -1
+    }
+
+    setBeatTime(bt):void{
+        if (this.isPlaying)
+            this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime = bt;
+    }
     
     stop():void{
-        this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+        if (this.movementMidiControllers[this.currentMovement] &&  this.movementMidiControllers[this.currentMovement][this.currentController]){
+            this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+        }
         this.isPlaying = false;
     }
     
@@ -128,7 +150,7 @@ class CompositionModule extends GraphicalModule{
     
     currentMovement : iMovement;
     instruments : Set<string>;
-    instrumentControllers : {string:InstrumentController};
+    instrumentControllers : {[instrument:string]:InstrumentController};
     
     protected deleteCallback: (module: CompositionModule) => void;
     protected fModuleInterfaceParams: { [label: string]: string } = {};
@@ -136,7 +158,10 @@ class CompositionModule extends GraphicalModule{
     eventCloseEditHandler: (event: Event) => void;
     
     targetMidiCallback : (c:number,p:number,v:number) => void;
-    
+    isPlaying :boolean;
+    playLoopInterval : number;
+    BPM : number;
+
     constructor(id: number, x: number, y: number, name: string, htmlElementModuleContainer: HTMLElement,
         removeModuleCallBack: (m: CompositionModule) => void, moduleInfo:JSONModuleDescription, 
         loadedCallback: (m: CompositionModule) => void){
@@ -151,6 +176,9 @@ class CompositionModule extends GraphicalModule{
         this.instruments = new Set<string>()
         this.movements = []
         this.instrumentControllers = {}
+        this.playLoopInterval = 200;
+        this.BPM = 60;
+
         this.fetchCompositionFile(moduleInfo.file, loadedCallback)        
         // var connector: Connector = new Connector();
         // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
@@ -200,6 +228,7 @@ class CompositionModule extends GraphicalModule{
     startMovement(movementIndex):void{
         var movementInstruments= this.movements[movementIndex].instruments;
         console.log(`Starting movement ${movementIndex}`)
+        this.isPlaying = true;
         for(let instrument of this.instruments){
             let ic:InstrumentController = this.instrumentControllers[instrument]
             ic.currentMovement =movementIndex;
@@ -216,9 +245,11 @@ class CompositionModule extends GraphicalModule{
                 }
             }
         }
+        this.playLoop()
     }
     
     playAll():void{
+        this.isPlaying =true;
         for(let instrument of this.instruments){
             let ic:InstrumentController = this.instrumentControllers[instrument]
             ic.currentMovement =this.movementIndex;
@@ -226,18 +257,19 @@ class CompositionModule extends GraphicalModule{
                 ic.play();
             }
         }
+        this.playLoop()
     }
 
     setBPM(bpm):void{
         for(let instrument of this.instruments){
             let ic:InstrumentController = this.instrumentControllers[instrument]
             ic.setBPM(bpm)
-
         }
     }
     
     
     stopAll():void{
+        this.isPlaying = false;
         for(let instrument of this.instruments){
             let ic = this.instrumentControllers[instrument]
             if (ic.isPlaying){
@@ -251,7 +283,73 @@ class CompositionModule extends GraphicalModule{
         this.movementIndex +=1;
         this.startMovement(this.movementIndex)
     }
+
+
     
+    //todo
+    //callback to make sure midi players are in time (should all be at same fraction of beat)
+    //adjust their clock so they're all in sync
+    synchronizeInstruments():void{
+
+
+        // let bt = 0;
+        let beat_signatures = []
+        let instrument_ids = []
+        let max_beat_times = {}
+        for(let instrument of this.instruments){
+            let ic = this.instrumentControllers[instrument]
+            if (ic.isPlaying){
+                let bt =ic.getBeatTime()
+                let b = ic.getBeat()
+                instrument_ids.push(instrument)
+                max_beat_times[b] ? max_beat_times[b] = Math.max(bt, max_beat_times[b]) : max_beat_times[b] = bt;
+
+                if (beat_signatures.indexOf(b) >=0){
+                    beat_signatures.push(b)
+                    for (let idx = 0 ; idx < beat_signatures.length; idx++){
+                        if (beat_signatures[idx]===b){
+                            this.instrumentControllers[instrument_ids[idx]].setBeatTime(max_beat_times[b])
+                        }
+                    }
+                }
+                else{
+                    beat_signatures.push(b)
+                }
+                console.log(`${instrument} is at beat ${b} (t= ${AudioUtils.beatsToSeconds(b, this.BPM)}) at time ${bt} (b= ${AudioUtils.secondsToBeats(bt, this.BPM)})`)
+
+            }
+        }
+        console.log(max_beat_times, beat_signatures)
+
+
+        // for(let instrument of this.instruments){
+        //     let ic = this.instrumentControllers[instrument]
+        //     if (ic.isPlaying){
+        //         ic.setBeatTime(bt)
+        //         //bt = Math.max(bt, );
+        //     }
+        // }
+
+    }
+    
+    instrumentReadMidi():void{
+        for(let instrument of this.instruments){
+            let ic = this.instrumentControllers[instrument]
+            if (ic.isPlaying){
+                ic.readMidi();
+            }
+        }
+    }
+
+
+    playLoop():void{
+        //this.synchronizeInstruments()
+        this.instrumentReadMidi()
+        if(this.isPlaying){
+            setTimeout(()=>{this.playLoop()}, this.playLoopInterval)
+        }
+    }
+
     
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule(): void {
@@ -341,10 +439,29 @@ class CompositionModule extends GraphicalModule{
                 this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => {}))
             }
 
-            this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (value) => {this.setBPM(value)}))
+            this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (controller) => {this.interfaceBPMSliderCallback(controller)}))
             
             //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
         }
+
+    //---- Generic callback for Faust Interface
+    //---- Called every time an element of the UI changes value
+    interfaceBPMSliderCallback(faustControler: FaustInterfaceControler): any {
+        var val: string
+        var input: HTMLInputElement = faustControler.faustInterfaceView.slider;
+        var fval = Number((parseFloat(input.value) * parseFloat(faustControler.itemParam.step)) + parseFloat(faustControler.itemParam.min));
+        val = fval.toFixed(parseFloat(faustControler.precision)); 
+        faustControler.value = val;
+        
+        var output: HTMLElement = faustControler.faustInterfaceView.output;
+        //---- update the value text
+        if (output)
+        output.textContent = "" + val + " " + faustControler.unit;
+        this.BPM = fval;
+        this.setBPM(fval)        
+    }
+    
+    
         
         // interface Iitem{
         //     label: string;

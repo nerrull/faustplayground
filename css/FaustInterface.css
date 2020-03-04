@@ -95,19 +95,22 @@
 	/* top: 50%; */
 }
 .moduleFaust .node-input {
-	left: -18px; 
-	/* left:50% -18px; */
-	top: -18px;
+	left: -12px; 
+	top: -12px;
 }
 .moduleFaust .node-output {
-	right: -18px; 
-	bottom: -18px;
+	right: -12px; 
+	top: -12px;
 
 }
 
 .moduleFaust .midi-input {
-	left: 50%;
-	top: -18px;
+	left: -12px;
+	top: -12px;
+}
+
+.moduleFaust .midi-output {
+
 }
 
 
@@ -332,6 +335,14 @@ footer>img {
 	width: 16px;
 }
 
+.parameter-node-input span {
+	background: #24d711;
+}
+
+.parameter-node-output span {
+	background: #ff3030;
+}
+
 .node-input span {
 	background: #24d711;
 }
@@ -341,6 +352,10 @@ footer>img {
 }
 
 .midi-input span {
+	background: #fca103;
+}
+
+.midi-output span {
 	background: #fca103;
 }
 
@@ -365,13 +380,6 @@ footer>img {
 }
 
 
-.parameter-node-input span {
-	background: #24d711;
-}
-
-.parameter-node-output span {
-	background: #ff3030;
-}
 
 
 .control-group .parameter-node-input {

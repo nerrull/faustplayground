@@ -491,6 +491,14 @@ class Utilitary {
     static getMidiDir() {
         return Utilitary.getDataDir() + "midi/";
     }
+    getAllIndexes(arr, val) {
+        var indexes = [];
+        var i;
+        for (i = 0; i < arr.length; i++)
+            if (arr[i] === val)
+                indexes.push(i);
+        return indexes;
+    }
 }
 Utilitary.messageRessource = new Ressources();
 Utilitary.idX = 0;
@@ -500,13 +508,22 @@ Utilitary.isAccelerometerEditOn = false;
 class PositionModule {
 }
 class AudioUtils {
+    static midiToFreq(note) {
+        return 440.0 * Math.pow(2.0, (note - 69.0) / 12.0);
+    }
+    static normalizeVelocity(v) {
+        return v / 128.0;
+    }
+    static beatsToSeconds(b, bpm) {
+        return b / (bpm / 60);
+    }
+    static secondsToBeats(s, bpm) {
+        return s * bpm / 60;
+    }
+    static floorBPM(beatFraction) {
+        return Math.round(32. * beatFraction) / 32.;
+    }
 }
-AudioUtils.midiToFreq = function (note) {
-    return 440.0 * Math.pow(2.0, (note - 69.0) / 12.0);
-};
-AudioUtils.normalizeVelocity = function (v) {
-    return v / 128.0;
-};
 /*				DRAGGING.JS
 Handles Graphical Drag of Modules and Connections
 This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
@@ -644,7 +661,7 @@ class Drag {
             let info = this.getSliderInfo(target);
             this.parameterAddress = info.getAttribute("parameter_address");
         }
-        this.isMidi = target.classList.contains("midi-node-output");
+        this.isMidi = target.classList.contains("midi-output");
         if (this.isMidi) {
             let info = this.getSliderInfo(target);
             this.instrument_id = info.getAttribute("instrument_id");
@@ -876,9 +893,14 @@ class Drag {
         var arrivingNode;
         var modules = Utilitary.currentScene.getModules();
         for (var i = 0; i < modules.length; i++) {
-            if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) || modules[i].moduleView.isPointInInput(x, y) || modules[i].moduleView.isPointInNode(x, y)) {
+            if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) ||
+                modules[i].moduleView.isPointInInput(x, y) ||
+                modules[i].moduleView.isPointInNode(x, y)) {
                 arrivingNode = modules[i];
                 break;
+            }
+            else if (this.isMidi && modules[i].moduleView.isPointInMidi(x, y)) {
+                arrivingNode = modules[i];
             }
         }
         //check arriving node and find module it is attached to
@@ -900,6 +922,9 @@ class Drag {
     isConnectionValid(target) {
         if (target.classList.contains("node-button")) {
             target = target.parentNode;
+        }
+        if (this.isMidi && target.classList.contains("midi-input")) {
+            return true;
         }
         if (target.classList.contains("node-input") && this.isOriginInput) {
             return false;
@@ -1199,14 +1224,14 @@ class FaustInterfaceControler {
         this.faustInterfaceView.output.textContent = String(value.toFixed(parseFloat(this.precision)));
     }
     static addButton(name, callback) {
-        var itemElement = { name: name, type: "button", label: name };
+        var itemElement = { type: "button", label: name };
         var controler = new FaustInterfaceControler((faustInterface) => { callback(); }, (adress, value) => { });
         controler.itemParam = itemElement;
         controler.value = "0";
         return controler;
     }
     static addMidiLabel(name, callback) {
-        var itemElement = { name: name, type: "midilabel", label: name };
+        var itemElement = { type: "midilabel", label: name };
         var controler = new FaustInterfaceControler((faustInterface) => { callback(); }, (adress, value) => { });
         controler.itemParam = itemElement;
         controler.value = "0";
@@ -1214,7 +1239,7 @@ class FaustInterfaceControler {
     }
     static addSlider(name, min, max, value, step, callback) {
         var itemElement = { type: "hslider", label: name, min: min, max: max, init: value, address: "", step: step, meta: [] };
-        var controler = new FaustInterfaceControler((faustInterface) => { }, (adress, value) => { callback(value); });
+        var controler = new FaustInterfaceControler((faustInterface) => { callback(faustInterface); }, (adress, value) => { });
         controler.itemParam = itemElement;
         return controler;
     }
@@ -1320,7 +1345,7 @@ class FaustInterfaceView {
         this.label = lab;
         info.appendChild(lab);
         this.outputNode = document.createElement("div");
-        this.outputNode.className = "parameter-node parameter-node-output midi-node-output";
+        this.outputNode.className = "parameter-node parameter-node-output midi-output";
         this.outputNode.draggable = false;
         let spanNode = document.createElement("span");
         spanNode.draggable = false;
@@ -1546,6 +1571,12 @@ class ModuleView {
     }
     isPointInInput(x, y) {
         if (this.fInputNode && this.fInputNode.getBoundingClientRect().left <= x && x <= this.fInputNode.getBoundingClientRect().right && this.fInputNode.getBoundingClientRect().top <= y && y <= this.fInputNode.getBoundingClientRect().bottom) {
+            return true;
+        }
+        return false;
+    }
+    isPointInMidi(x, y) {
+        if (this.fMidiNode && this.fMidiNode.getBoundingClientRect().left <= x && x <= this.fMidiNode.getBoundingClientRect().right && this.fMidiNode.getBoundingClientRect().top <= y && y <= this.fMidiNode.getBoundingClientRect().bottom) {
             return true;
         }
         return false;
@@ -1897,7 +1928,7 @@ class ModuleClass extends GraphicalModule {
         this.fModuleInterfaceParams = {};
         this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
         this.eventOpenEditHandler = () => { this.edit(); };
-        this.isPoly = false;
+        this.isMidi = false;
         this.compileFaust = compileFaust;
         this.deleteCallback = removeModuleCallBack;
         // this.moduleFaust = new ModuleFaust(name);
@@ -1917,13 +1948,13 @@ class ModuleClass extends GraphicalModule {
     //--- Create and Update are called once a source code is compiled and the factory exists
     createDSP(factory, callback) {
         this.moduleFaust.factory = factory;
-        this.isPoly = factory.isPoly;
+        this.isMidi = factory.isMidi;
         try {
             if (factory != null) {
                 var moduleFaust = this.moduleFaust;
                 //let options = moduleFaust.factory.factory.json_object.meta;
                 //todo: make poly work
-                if (this.isPoly) {
+                if (this.isMidi) {
                     faust.createPolyDSPInstance(factory, Utilitary.audioContext, 1024, 16, function (dsp) {
                         if (dsp != null) {
                             moduleFaust.fDSP = dsp;
@@ -1964,7 +1995,7 @@ class ModuleClass extends GraphicalModule {
     //     this.moduleFaust.fDSP.keyOn(channel, pitch, velocity)
     // }
     midiControl(midiInfo) {
-        console.log("Received midi control ");
+        //console.log("Received midi control " )
         var base = this.moduleFaust.getBaseAdressPath();
         this.externalSetParamValue(base + '/freq', "" + AudioUtils.midiToFreq(midiInfo.note), true);
         this.externalSetParamValue(base + '/gain', "" + AudioUtils.normalizeVelocity(midiInfo.note), true);
@@ -2034,7 +2065,7 @@ class ModuleClass extends GraphicalModule {
         this.moduleFaust.fTempName = name;
         this.moduleFaust.fTempSource = code;
         var module = this;
-        this.compileFaust({ isPoly: this.isPoly, name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module); } });
+        this.compileFaust({ isMidi: this.isMidi, name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module); } });
     }
     //---- React to recompilation triggered by click on icon
     recompileSource(event, module) {
@@ -2081,9 +2112,6 @@ class ModuleClass extends GraphicalModule {
     }
     //Function overrides
     getNumInputs() {
-        if (this.isPoly) {
-            return 1;
-        }
         return this.moduleFaust.fDSP.getNumInputs();
     }
     getNumOutputs() {
@@ -2555,26 +2583,41 @@ class MIDIManager {
         this.startDelay = 0;
         this.BPM = 120;
         this.MIDIOffset = 0;
+        this.readMessageMinInterval = 200; //200 ms
         this.eventQueue = []; // hold events to be triggered
         this.queuedTime = 0; // 
         this.startTime = 0; // to measure time elapse
         this.noteRegistrar = {}; // get event for requested note
         this.onMidiEvent = midiCallback;
+        this.currentMidiMessageIndex = 0;
+        this.cacheLoaded = false;
+        this.currentBeat = 0;
+        this.scheduledNotes = [];
     }
     setBPM(bpm) {
         this.BPM = bpm;
+        //update queued time to match new BPM
+        // if (this.scheduledNotes.length >0){
+        //     let note_info : ScheduledNoteData;
+        //     for (note_info of this.scheduledNotes){
+        //         this.queuedTime -=note_info.scheduled_delay
+        //         this.queuedTime += AudioUtils.beatsToSeconds(note_info.beat_duration, this.BPM);
+        //     }
+        // }
     }
     start(onsuccess = null) {
+        this.stop();
         console.log("Starting midi playback of " + this.filename);
-        this.currentTime = clamp(0, this.getLength(), this.currentTime);
-        this.startAudio(this.currentTime, null, onsuccess);
+        //this.currentTime = clamp(0, this.getLength(), this.currentTime);
+        this.playing = true;
+        return this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
     }
     ;
     resume(onsuccess) {
         if (this.currentTime < -1) {
             this.currentTime = -1;
         }
-        this.startAudio(this.currentTime, null, onsuccess);
+        this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
     }
     ;
     pause() {
@@ -2587,9 +2630,12 @@ class MIDIManager {
     stop() {
         console.log("Stopping midi playback of " + this.filename);
         this.stopAudio();
+        this.scheduledNotes = [];
         this.restart = 0;
         this.currentTime = 0;
+        this.currentMidiMessageIndex = 0;
     }
+    ;
     addListener(listenerCallback) {
         this.onMidiEvent = listenerCallback;
     }
@@ -2684,6 +2730,7 @@ class MIDIManager {
     //     return ret;
     // };
     processMidi(data) {
+        // this.scheduledNotes.shift();
         if (data.message === 128) {
             delete this.noteRegistrar[data.note];
         }
@@ -2697,14 +2744,15 @@ class MIDIManager {
         ///
         this.eventQueue.shift();
         ///
-        if (this.eventQueue.length < 1000) {
-            this.startAudio(this.queuedTime, true);
-        }
-        else if (this.currentTime === this.queuedTime && this.queuedTime < this.endTime) { // grab next sequence
-            this.startAudio(this.queuedTime, true);
-        }
+        // if (this.eventQueue.length < 2) {
+        //     this.startAudio(this.queuedTime, true);
+        // } 
+        // else if (this.currentTime > (this.lastReadMessageTime - this.readMessageMinInterval)) { // grab next sequence
+        //     this.startAudio(this.queuedTime, true);
+        // }
     }
     scheduleTracking(channel, note, currentTime, endTime, offset, message, velocity) {
+        //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
         return setTimeout(() => {
             var data = {
                 channel: channel,
@@ -2715,77 +2763,77 @@ class MIDIManager {
                 velocity: velocity
             };
             this.processMidi(data);
-        }, currentTime - offset);
+        }, (currentTime - offset) * 1000);
     }
     ;
-    // Playing the audio
-    startAudio(currentTime, fromCache, onsuccess = null) {
-        if (!this.replayer) {
-            return;
-        }
-        if (!fromCache) {
-            if (typeof currentTime === 'undefined') {
-                currentTime = this.restart;
-            }
-            ///
-            this.playing && this.stopAudio();
-            this.playing = true;
-            this.data = this.replayer.getData();
-            this.endTime = this.getLength();
-        }
-        ///
+    //read midi data and schedule note events
+    readMidi() {
         var note;
-        var offset = 0;
+        var offset = 0; //keeps track of where we are relative to current timestep
         var messages = 0;
-        var data = this.data;
         var ctx = this.getContext();
-        var length = data.length;
-        this.queuedTime = 0.;
+        var length = this.data.length;
         var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
-        var foffset = currentTime - this.currentTime;
-        this.startTime = ctx.currentTime;
-        for (var n = 0; n < length && messages < 100; n++) {
-            var obj = data[n];
+        //time relative to start
+        this.currentTime = ctx.currentTime - this.startTime;
+        var offset = this.queuedTime;
+        //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
+        while (this.queuedTime <= this.currentTime + this.readMessageMinInterval * 2 / 1000.) {
+            var obj = this.data[this.currentMidiMessageIndex];
             var midi_time = obj[1];
             var midi_beats = obj[2];
-            var note_ms = this.beatsToSeconds(midi_beats) * 1000;
-            if ((this.queuedTime += note_ms) <= currentTime) {
+            var note_s = AudioUtils.beatsToSeconds(midi_beats, this.BPM);
+            this.currentBeat += AudioUtils.floorBPM(midi_beats);
+            this.currentMidiMessageIndex += 1;
+            if (this.currentMidiMessageIndex >= this.data.length) {
+                console.log(`${this.filename} LOOPING`);
+                this.currentBeat = 0;
+            }
+            this.currentMidiMessageIndex = this.currentMidiMessageIndex % this.data.length;
+            //update queued time 
+            this.queuedTime += note_s;
+            //Skip notes we were too late to read
+            if (this.queuedTime < this.currentTime) {
+                console.log(`missed midi message ${obj[0].event.subtype}`);
                 offset = this.queuedTime;
                 continue;
             }
-            ///
-            currentTime = this.queuedTime - offset;
-            ///
+            //update current time
+            //currentTime = this.queuedTime - offset;
             var event = obj[0].event;
             if (event.type !== 'channel') {
+                console.log(`dropped midi message ${event.subtype}`);
                 continue;
             }
-            //var channelId = event.channel;
-            // var channel = MIDI.channels[channelId];
-            let channelId = 0;
-            var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
+            var channelId = event.channel;
+            //var channel = MIDI.channels[channelId];
+            // var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
             var queueTime = this.queuedTime - offset + this.startDelay;
+            offset = 0;
+            var eventTime = this.queuedTime - this.currentTime;
+            var note_data = { queue_time: this.queuedTime, beat_duration: midi_beats, scheduled_delay: eventTime };
             switch (event.subtype) {
                 case 'noteOn':
                     //if (channel.mute) break;
                     note = event.noteNumber - (this.MIDIOffset || 0);
+                    // this.scheduledNotes.push(note_data);
                     this.eventQueue.push({
                         event: event,
                         time: queueTime,
                         //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
-                        interval: this.scheduleTracking(channelId, note, this.queuedTime + this.startDelay, this.endTime, offset - foffset, 144, event.velocity)
+                        interval: this.scheduleTracking(channelId, note, eventTime, this.endTime, offset, 144, event.velocity)
                     });
                     messages++;
                     break;
                 case 'noteOff':
                     //if (channel.mute) break;
-                    note = event.noteNumber - (this.MIDIOffset || 0);
-                    this.eventQueue.push({
-                        event: event,
-                        time: queueTime,
-                        //source: MIDI.noteOff(channelId, event.noteNumber, delay),
-                        interval: this.scheduleTracking(channelId, note, this.queuedTime, this.endTime, offset - foffset, 128, 0)
-                    });
+                    // note = event.noteNumber - (this.MIDIOffset || 0);
+                    // this.eventQueue.push({
+                    //     event: event,
+                    //     time: queueTime,
+                    //     //source: MIDI.noteOff(channelId, event.noteNumber, delay),
+                    //     interval: this.scheduleTracking(channelId, note, eventTime, this.endTime, offset , 128, 0)
+                    // });
                     break;
                 case 'controller':
                     // MIDI.setController(channelId, event.controllerType, event.value, delay);
@@ -2800,13 +2848,41 @@ class MIDIManager {
                     break;
             }
         }
-        ///
-        onsuccess && onsuccess(this.eventQueue);
+        //console.log(`${this.filename} Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
+    }
+    // Playing the audio
+    startAudio(currentTime, fromCache, onsuccess = null) {
+        if (!this.replayer) {
+            return;
+        }
+        if (!fromCache) {
+            if (typeof currentTime === 'undefined') {
+                currentTime = this.restart;
+            }
+            ///
+            this.playing && this.stopAudio();
+            this.playing = true;
+            this.data = this.replayer.getData();
+            this.endTime = this.getLength();
+            this.cacheLoaded = true;
+        }
+        if (this.endTime < this.readMessageMinInterval) {
+            console.log(`${this.filename} is too short, aborting`);
+            this.stop();
+            return false;
+        }
+        this.startTime = this.getContext().currentTime;
+        this.queuedTime = 0;
+        this.currentBeat = 0;
+        return true;
+        // ///
+        // onsuccess && onsuccess(this.eventQueue); 
     }
     ;
     stopAudio() {
         var ctx = this.getContext();
         this.playing = false;
+        this.currentMidiMessageIndex = 0;
         this.restart += (ctx.currentTime - this.startTime) * 1000;
         // stop the audio, and intervals
         while (this.eventQueue.length) {
@@ -4040,7 +4116,7 @@ class Scene {
         this.fAudioInput = new ModuleClass(Utilitary.idX++, positionInput.x, positionInput.y, "input", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module); }, this.compileFaust);
         this.fAudioInput.patchID = "input";
         var scene = this;
-        this.compileFaust({ isPoly: false, name: "input", sourceCode: "process=_,_;", x: positionInput.x, y: positionInput.y, callback: (factory) => { scene.integrateAudioInput(factory); } });
+        this.compileFaust({ isMidi: false, name: "input", sourceCode: "process=_,_;", x: positionInput.x, y: positionInput.y, callback: (factory) => { scene.integrateAudioInput(factory); } });
     }
     integrateOutput() {
         var positionOutput = this.positionOutputModule();
@@ -4048,7 +4124,7 @@ class Scene {
         this.fAudioOutput = new ModuleClass(Utilitary.idX++, positionOutput.x, positionOutput.y, "output", this.sceneView.inputOutputModuleContainer, (module) => { this.removeModule(module); }, this.compileFaust);
         this.fAudioOutput.patchID = "output";
         this.addMuteOutputListner(this.fAudioOutput);
-        this.compileFaust({ isPoly: false, name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory); } });
+        this.compileFaust({ isMidi: false, name: "output", sourceCode: "process=_,_;", x: positionOutput.x, y: positionOutput.y, callback: (factory) => { scene.integrateAudioOutput(factory); } });
     }
     integrateAudioOutput(factory) {
         if (this.fAudioOutput) {
@@ -4235,8 +4311,7 @@ class Scene {
             else if (jsonObject.patchId != "output" && jsonObject.patchId != "input") {
                 this.tempPatchId = jsonObject.patchId;
                 this.sceneName = jsonObject.sceneName;
-                //todo: get ispoly or not
-                var argumentCompile = { isPoly: false, name: jsonObject.name, sourceCode: jsonObject.code, x: parseFloat(jsonObject.x), y: parseFloat(jsonObject.y), callback: (factory) => { this.createModule(factory); } };
+                var argumentCompile = { isMidi: false, name: jsonObject.name, sourceCode: jsonObject.code, x: parseFloat(jsonObject.x), y: parseFloat(jsonObject.y), callback: (factory) => { this.createModule(factory); } };
                 this.compileFaust(argumentCompile);
             }
             else {
@@ -4529,7 +4604,7 @@ class InstrumentController {
         // }
     }
     midiCallback(midiInfo) {
-        console.log(`${this.name} - MIDI event: ${midiInfo}`);
+        // console.log (`${Utilitary.audioContext.currentTime} :${this.name} - MIDI event: ${midiInfo.note}`);
         var cbtl = this.callbackTargets.length;
         if (cbtl > 0) {
             for (let i = 0; i < cbtl; i++) {
@@ -4550,6 +4625,9 @@ class InstrumentController {
         console.log(this.name + " failed to load file : " + filename);
         this.fileLoaded = false;
     }
+    readMidi() {
+        this.movementMidiControllers[this.currentMovement][this.currentController].readMidi();
+    }
     play() {
         console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`);
         let movementLength = this.movementMidiControllers[this.currentMovement].length;
@@ -4557,8 +4635,8 @@ class InstrumentController {
             if (this.currentController >= movementLength || this.currentController < 0) {
                 this.currentController = 0;
             }
-            this.movementMidiControllers[this.currentMovement][this.currentController].start();
-            this.isPlaying = true;
+            this.isPlaying = this.movementMidiControllers[this.currentMovement][this.currentController].start();
+            ;
         }
     }
     setBPM(bpm) {
@@ -4568,8 +4646,22 @@ class InstrumentController {
             }
         }
     }
+    getBeat() {
+        return this.movementMidiControllers[this.currentMovement][this.currentController].currentBeat;
+    }
+    getBeatTime() {
+        if (this.isPlaying)
+            return this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime;
+        return -1;
+    }
+    setBeatTime(bt) {
+        if (this.isPlaying)
+            this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime = bt;
+    }
     stop() {
-        this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+        if (this.movementMidiControllers[this.currentMovement] && this.movementMidiControllers[this.currentMovement][this.currentController]) {
+            this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+        }
         this.isPlaying = false;
     }
     loopCallback() {
@@ -4595,6 +4687,8 @@ class CompositionModule extends GraphicalModule {
         this.instruments = new Set();
         this.movements = [];
         this.instrumentControllers = {};
+        this.playLoopInterval = 200;
+        this.BPM = 60;
         this.fetchCompositionFile(moduleInfo.file, loadedCallback);
         // var connector: Connector = new Connector();
         // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
@@ -4638,6 +4732,7 @@ class CompositionModule extends GraphicalModule {
     startMovement(movementIndex) {
         var movementInstruments = this.movements[movementIndex].instruments;
         console.log(`Starting movement ${movementIndex}`);
+        this.isPlaying = true;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
             ic.currentMovement = movementIndex;
@@ -4654,8 +4749,10 @@ class CompositionModule extends GraphicalModule {
                 }
             }
         }
+        this.playLoop();
     }
     playAll() {
+        this.isPlaying = true;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
             ic.currentMovement = this.movementIndex;
@@ -4663,6 +4760,7 @@ class CompositionModule extends GraphicalModule {
                 ic.play();
             }
         }
+        this.playLoop();
     }
     setBPM(bpm) {
         for (let instrument of this.instruments) {
@@ -4671,6 +4769,7 @@ class CompositionModule extends GraphicalModule {
         }
     }
     stopAll() {
+        this.isPlaying = false;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
             if (ic.isPlaying) {
@@ -4682,6 +4781,59 @@ class CompositionModule extends GraphicalModule {
     nextMovement() {
         this.movementIndex += 1;
         this.startMovement(this.movementIndex);
+    }
+    //todo
+    //callback to make sure midi players are in time (should all be at same fraction of beat)
+    //adjust their clock so they're all in sync
+    synchronizeInstruments() {
+        // let bt = 0;
+        let beat_signatures = [];
+        let instrument_ids = [];
+        let max_beat_times = {};
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            if (ic.isPlaying) {
+                let bt = ic.getBeatTime();
+                let b = ic.getBeat();
+                instrument_ids.push(instrument);
+                max_beat_times[b] ? max_beat_times[b] = Math.max(bt, max_beat_times[b]) : max_beat_times[b] = bt;
+                if (beat_signatures.indexOf(b) >= 0) {
+                    beat_signatures.push(b);
+                    for (let idx = 0; idx < beat_signatures.length; idx++) {
+                        if (beat_signatures[idx] === b) {
+                            this.instrumentControllers[instrument_ids[idx]].setBeatTime(max_beat_times[b]);
+                        }
+                    }
+                }
+                else {
+                    beat_signatures.push(b);
+                }
+                console.log(`${instrument} is at beat ${b} (t= ${AudioUtils.beatsToSeconds(b, this.BPM)}) at time ${bt} (b= ${AudioUtils.secondsToBeats(bt, this.BPM)})`);
+            }
+        }
+        console.log(max_beat_times, beat_signatures);
+        // for(let instrument of this.instruments){
+        //     let ic = this.instrumentControllers[instrument]
+        //     if (ic.isPlaying){
+        //         ic.setBeatTime(bt)
+        //         //bt = Math.max(bt, );
+        //     }
+        // }
+    }
+    instrumentReadMidi() {
+        for (let instrument of this.instruments) {
+            let ic = this.instrumentControllers[instrument];
+            if (ic.isPlaying) {
+                ic.readMidi();
+            }
+        }
+    }
+    playLoop() {
+        //this.synchronizeInstruments()
+        this.instrumentReadMidi();
+        if (this.isPlaying) {
+            setTimeout(() => { this.playLoop(); }, this.playLoopInterval);
+        }
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
@@ -4748,8 +4900,23 @@ class CompositionModule extends GraphicalModule {
         for (let inst of this.instruments) {
             this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => { }));
         }
-        this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (value) => { this.setBPM(value); }));
+        this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (controller) => { this.interfaceBPMSliderCallback(controller); }));
         //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
+    }
+    //---- Generic callback for Faust Interface
+    //---- Called every time an element of the UI changes value
+    interfaceBPMSliderCallback(faustControler) {
+        var val;
+        var input = faustControler.faustInterfaceView.slider;
+        var fval = Number((parseFloat(input.value) * parseFloat(faustControler.itemParam.step)) + parseFloat(faustControler.itemParam.min));
+        val = fval.toFixed(parseFloat(faustControler.precision));
+        faustControler.value = val;
+        var output = faustControler.faustInterfaceView.output;
+        //---- update the value text
+        if (output)
+            output.textContent = "" + val + " " + faustControler.unit;
+        this.BPM = fval;
+        this.setBPM(fval);
     }
     // interface Iitem{
     //     label: string;
@@ -7151,15 +7318,15 @@ class App {
         //check if it's an
         try {
             //todo make poly work
-            if (compileFaust.isPoly) {
+            if (compileFaust.isMidi) {
                 this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => {
-                    factory.isPoly = true;
+                    factory.isMidi = true;
                     compileFaust.callback(factory);
                 });
             }
             else {
                 this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => {
-                    factory.isPoly = false;
+                    factory.isMidi = false;
                     compileFaust.callback(factory);
                 });
             }
@@ -7210,7 +7377,7 @@ class App {
             module.setFaustInterfaceControles();
             module.createFaustInterface();
             module.addInputOutputNodes();
-            if (module.isPoly) {
+            if (module.isMidi) {
                 module.addMidiControlNode();
             }
             //set listener to recompile when dropping faust code on the module
@@ -7413,7 +7580,7 @@ class App {
             Utilitary.getXHR(url, (codeFaust) => {
                 var dsp_code = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
                 if (module == null) {
-                    app.compileFaust({ isPoly: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+                    app.compileFaust({ isMidi: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
                 }
                 else {
                     module.update(filename, dsp_code);
@@ -7424,10 +7591,10 @@ class App {
             Utilitary.getXHR(url, (codeFaust) => {
                 var dsp_code = "process = vgroup(\"" + filename + "\",environment{" + codeFaust + "}.process);";
                 if (module == null) {
-                    app.compileFaust({ isPoly: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+                    app.compileFaust({ isMidi: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
                 }
                 else {
-                    module.isPoly = true;
+                    module.isMidi = true;
                     module.update(filename, dsp_code);
                 }
             }, Utilitary.errorCallBack);
@@ -7435,7 +7602,7 @@ class App {
         else if (extension == "json") {
             Utilitary.getXHR(url, (codeFaust) => {
                 let moduleJson = JSON.parse(codeFaust);
-                app.compileFaust({ isPoly: false, name: filename, sourceCode: "process=_,_;", x: x, y: y, callback: (factory) => { app.createNonFaustModule(factory, moduleJson); } });
+                app.compileFaust({ isMidi: false, name: filename, sourceCode: "process=_,_;", x: x, y: y, callback: (factory) => { app.createNonFaustModule(factory, moduleJson); } });
                 //app.createNonFaustModule({ name:filename, sourceCode:codeFaust, x:x, y:y})
             }, Utilitary.errorCallBack);
         }
@@ -7443,9 +7610,8 @@ class App {
     // used for dsp code faust
     uploadCodeFaust(app, module, x, y, e, dsp_code) {
         dsp_code = "process = vgroup(\"" + "TEXT" + "\",environment{" + dsp_code + "}.process);";
-        //todo figure if ispoly
         if (!module) {
-            app.compileFaust({ isPoly: false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
+            app.compileFaust({ isMidi: false, name: "TEXT", sourceCode: dsp_code, x: x, y: y, callback: (factory) => { app.createModule(factory); } });
         }
         else {
             module.update("TEXT", dsp_code);
@@ -7483,22 +7649,22 @@ class App {
             dsp_code = "process = vgroup(\"" + filename + "\",environment{" + reader.result + "}.process);";
             if (!module) {
                 if (type == "dsp") {
-                    this.compileFaust({ isPoly: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
+                    this.compileFaust({ isMidi: false, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
                 }
                 else if (type == "poly") {
-                    this.compileFaust({ isPoly: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
+                    this.compileFaust({ isMidi: true, name: filename, sourceCode: dsp_code, x: x, y: y, callback: (factory) => { this.createModule(factory); } });
                 }
             }
             else {
                 if (type == "dsp") {
-                    module.isPoly = false;
+                    module.isMidi = false;
                     module.update(filename, dsp_code);
                 }
                 else if (type == "json") {
                     Utilitary.currentScene.recallScene(reader.result);
                 }
                 else if (type == "poly") {
-                    module.isPoly = true;
+                    module.isMidi = true;
                     module.update(filename, dsp_code);
                 }
             }

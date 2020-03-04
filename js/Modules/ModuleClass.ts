@@ -22,14 +22,14 @@ class ModuleClass extends GraphicalModule  {
 
     eventCloseEditHandler: (event: Event) => void;
     compileFaust: (conpileFaust: CompileFaust) => void;
-    isPoly: boolean;
+    isMidi: boolean;
 
     constructor(id: number, x: number, y: number, name: string, htmlElementModuleContainer: HTMLElement, removeModuleCallBack: (m: ModuleClass) => void, compileFaust: (compileFaust: CompileFaust) => void) {
         super(id,x, y, name, htmlElementModuleContainer);
 
         this.eventCloseEditHandler = (event: MouseEvent) => { this.recompileSource(event, this) }
         this.eventOpenEditHandler = () => { this.edit() }
-        this.isPoly = false;
+        this.isMidi = false;
         this.compileFaust = compileFaust;
         this.deleteCallback = removeModuleCallBack;
         // this.moduleFaust = new ModuleFaust(name);
@@ -58,13 +58,13 @@ class ModuleClass extends GraphicalModule  {
     //--- Create and Update are called once a source code is compiled and the factory exists
     createDSP(factory: Factory, callback: DSPCallback): void {
         this.moduleFaust.factory = factory;
-        this.isPoly = factory.isPoly;
+        this.isMidi = factory.isMidi;
         try {
             if (factory != null) {
                 var moduleFaust = this.moduleFaust; 
                 //let options = moduleFaust.factory.factory.json_object.meta;
                 //todo: make poly work
-                if (this.isPoly){
+                if (this.isMidi){
                     faust.createPolyDSPInstance(factory, Utilitary.audioContext, 1024,16,
                         function(dsp) {
                           if (dsp != null) {
@@ -107,7 +107,7 @@ class ModuleClass extends GraphicalModule  {
     // }
 
     public midiControl(midiInfo ){
-        console.log("Received midi control " )
+        //console.log("Received midi control " )
         var base : string = this.moduleFaust.getBaseAdressPath();
         this.externalSetParamValue(base +'/freq', "" +AudioUtils.midiToFreq(midiInfo.note),  true);
         this.externalSetParamValue(base+'/gain', "" +AudioUtils.normalizeVelocity(midiInfo.note), true);
@@ -195,7 +195,7 @@ class ModuleClass extends GraphicalModule  {
         this.moduleFaust.fTempSource = code;
         var module: ModuleClass = this;
 
-        this.compileFaust({isPoly:this.isPoly, name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module) }});
+        this.compileFaust({isMidi:this.isMidi, name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y, callback: (factory) => { module.updateDSP(factory, module) }});
     }
 
     //---- React to recompilation triggered by click on icon
@@ -256,9 +256,6 @@ class ModuleClass extends GraphicalModule  {
 
     //Function overrides
     getNumInputs(): number{
-        if (this.isPoly){
-            return 1;
-        }
         return this.moduleFaust.fDSP.getNumInputs();
     }
 

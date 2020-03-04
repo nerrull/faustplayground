@@ -105,6 +105,15 @@ class Utilitary {
         return  Utilitary.getDataDir() + "midi/"
     }
 
+    getAllIndexes(arr, val):any[] {
+        var indexes = [];
+        var i;
+        for(i = 0; i < arr.length; i++)
+            if (arr[i] === val)
+                indexes.push(i);
+        return indexes;
+    }
+
 }
 /********************************************************************
 **************************  interfaces  *****************************
@@ -141,7 +150,7 @@ interface Factory {
     name: string;
     sha_key: string;
     code: string;
-    isPoly: boolean
+    isMidi: boolean
 }
 interface HTMLInterfaceContainer extends HTMLDivElement {
     unlitClassname: string;
@@ -163,19 +172,31 @@ interface CompileFaust {
     sourceCode: string,
     x: number,
     y: number,
-    isPoly: boolean, 
+    isMidi: boolean, 
     callback: (factory: Factory) => void
 }
 
 
 class AudioUtils{
     
-    static midiToFreq = function (note)
+    static midiToFreq(note):number
     {
         return 440.0 * Math.pow(2.0, (note - 69.0) / 12.0);
     }
-    static normalizeVelocity = function (v)
+    static normalizeVelocity(v):number
     {
         return v/128.0;
+    }
+
+    static beatsToSeconds(b, bpm):number{
+        return b/(bpm/60);
+    }
+
+    static secondsToBeats(s, bpm):number{
+        return s*bpm/60
+    }
+
+    static floorBPM(beatFraction):number{
+        return Math.round(32.*beatFraction)/32.
     }
 }

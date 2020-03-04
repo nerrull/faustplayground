@@ -170,7 +170,7 @@ class Drag {
             this.parameterAddress = info.getAttribute("parameter_address");
         }
 
-        this.isMidi = target.classList.contains("midi-node-output")
+        this.isMidi = target.classList.contains("midi-output")
         if (this.isMidi){
             let info =  this.getSliderInfo(target);
             this.instrument_id = info.getAttribute("instrument_id");
@@ -444,11 +444,17 @@ stopDraggingConnector(target: HTMLElement, x: number, y: number, module: Graphic
     var modules: GraphicalModule[] = Utilitary.currentScene.getModules();
     
     for (var i = 0; i < modules.length; i++){
-        if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) || modules[i].moduleView.isPointInInput(x, y) || modules[i].moduleView.isPointInNode(x,y)) {
+        if ((this.isOriginInput && modules[i].moduleView.isPointInOutput(x, y)) || 
+            modules[i].moduleView.isPointInInput(x, y) || 
+            modules[i].moduleView.isPointInNode(x,y) ){
             arrivingNode = modules[i];
             break;
         }
+        else if (this.isMidi && modules[i].moduleView.isPointInMidi(x,y)){
+            arrivingNode = modules[i];
+        }
     }
+
     //check arriving node and find module it is attached to
     if (arrivingHTMLParentNode!=undefined&&arrivingHTMLParentNode.classList.contains("node")) {
         var outputModule = Utilitary.currentScene.getAudioOutput();
@@ -459,6 +465,7 @@ stopDraggingConnector(target: HTMLElement, x: number, y: number, module: Graphic
             arrivingNode = inputModule;
         }
     }
+
     this.stopDraggingConnection(module, arrivingNode, target);
     var index = module.dragList.indexOf(this);
     module.dragList.splice(index, 1);
@@ -469,6 +476,9 @@ stopDraggingConnector(target: HTMLElement, x: number, y: number, module: Graphic
 isConnectionValid(target: HTMLElement): boolean {
     if (target.classList.contains("node-button")) {
         target = <HTMLElement>target.parentNode;
+    }
+    if (this.isMidi && target.classList.contains("midi-input")){
+        return true;
     }
     if (target.classList.contains("node-input") && this.isOriginInput) {
         return false;

@@ -419,7 +419,7 @@ faust.createDSPFactoryAux = function (code, argv, internal_memory, callback)
     var factory = faust.factory_table[sha_key];
 
     if (factory) {
-        factory.isPoly = !internal_memory
+        factory.isMidi = !internal_memory
         console.log("Existing library : " + factory.name);
         // Existing factory, do not create it...
         callback(factory);
@@ -2420,9 +2420,9 @@ faust.createPolyDSPInstanceAux = function (factory, time1, mixer_instance, dsp_i
     sp.keyOn = function (channel, pitch, velocity)
     {
         var voice = sp.getFreeVoice();
-        console.log("keyOn voice %d", voice);
-        console.log("pitch %d", pitch);
-        console.log("velocity %d", velocity);
+        // console.log("keyOn voice %d", voice);
+        // console.log("pitch %d", pitch);
+        // console.log("velocity %d", velocity);
         for (var i = 0; i < sp.fFreqLabel.length; i++) {
             sp.factory.setParamValue(sp.dsp_voices[voice], sp.fFreqLabel[i], sp.midiToFreq(pitch));
         }

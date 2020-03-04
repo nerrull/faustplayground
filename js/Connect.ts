@@ -190,7 +190,7 @@ class Connector {
         return true;
     }
     
-    breakSingleInputConnection(source: ModuleClass, destination: ModuleClass, connector: Connector) {
+    breakSingleInputConnection(source: GraphicalModule, destination: GraphicalModule, connector: Connector) {
         
         this.disconnectModules(source, destination);
         

@@ -16,6 +16,13 @@ function clamp(min, max, value) {
 	return (value < min) ? min : ((value > max) ? max : value);
 };
 
+
+interface ScheduledNoteData{
+    beat_duration:number
+    scheduled_delay:number
+    queue_time:number
+}
+
 class MIDIManager{
 
     //to type eventually
@@ -25,21 +32,34 @@ class MIDIManager{
     currentData:any;
     eventQueue: any;
     noteRegistrar:any; // get event for requested note
+    scheduledNotes:any;
 
+    //timing parameters
     currentTime : number;
     endTime: number; 
+    
+
+    //read loop parameters
+    currentMidiMessageIndex :number;
+    readMessageMinInterval : number;
+    lastReadMessageTime : number;
+
+
     restart : number; 
     playing : boolean;
     timeWarp : number;
     startDelay : number;
     BPM : number;
-    queuedTime : number; // 
-    startTime : number; // to measure time elapse
-    MIDIOffset: number
-   
+
+    currentBeat: number; 
+    queuedTime : number; // measures at what point of time we are at in the queue
+    startTime : number; // to measure time elapsed
+    MIDIOffset: number;
+
     onMidiEvent : Function  // listener
     
     api:string;
+    cacheLoaded:boolean;
 
     
     constructor( midiCallback:Function){
@@ -52,27 +72,44 @@ class MIDIManager{
         this.startDelay = 0;
         this.BPM = 120;
         this.MIDIOffset = 0;
+
+        this.readMessageMinInterval = 200; //200 ms
         
         this.eventQueue = []; // hold events to be triggered
         this.queuedTime =0; // 
         this.startTime = 0; // to measure time elapse
         this.noteRegistrar = {}; // get event for requested note
         this.onMidiEvent=midiCallback
+        this.currentMidiMessageIndex =0;
+        this.cacheLoaded = false;
+        this.currentBeat = 0;
+        this.scheduledNotes= [];
     }
     setBPM(bpm){
         this.BPM = bpm;
+        //update queued time to match new BPM
+        // if (this.scheduledNotes.length >0){
+        //     let note_info : ScheduledNoteData;
+        //     for (note_info of this.scheduledNotes){
+        //         this.queuedTime -=note_info.scheduled_delay
+        //         this.queuedTime += AudioUtils.beatsToSeconds(note_info.beat_duration, this.BPM);
+        //     }
+        // }
     }
-    start(onsuccess =null) {
+
+    start(onsuccess =null):boolean {
+        this.stop();
         console.log("Starting midi playback of " + this.filename)
-        this.currentTime = clamp(0, this.getLength(), this.currentTime);
-        this.startAudio(this.currentTime, null, onsuccess);
+        //this.currentTime = clamp(0, this.getLength(), this.currentTime);
+        this.playing = true;
+        return this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
     };
     
     resume(onsuccess): void {
         if (this.currentTime < -1) {
             this.currentTime = -1;
         }
-        this.startAudio(this.currentTime, null, onsuccess);
+        this.startAudio(this.currentTime,  this.cacheLoaded, onsuccess);
     };
     
     pause():void {
@@ -86,9 +123,11 @@ class MIDIManager{
         console.log("Stopping midi playback of " + this.filename)
 
         this.stopAudio();
+        this.scheduledNotes = []
         this.restart = 0;
         this.currentTime = 0;
-    }
+        this.currentMidiMessageIndex = 0;
+    };
     
     addListener(listenerCallback:Function):void {
         this.onMidiEvent = listenerCallback;
@@ -185,7 +224,7 @@ class MIDIManager{
     // };
     
     processMidi(data){
-        
+        // this.scheduledNotes.shift();
         if (data.message === 128) {
             delete this.noteRegistrar[data.note];
         } else {
@@ -199,15 +238,17 @@ class MIDIManager{
         ///
         this.eventQueue.shift();
         ///
-        if (this.eventQueue.length < 1000) {
-            this.startAudio(this.queuedTime, true);
-        } else if (this.currentTime === this.queuedTime && this.queuedTime < this.endTime) { // grab next sequence
-            this.startAudio(this.queuedTime, true);
-        }
+        // if (this.eventQueue.length < 2) {
+        //     this.startAudio(this.queuedTime, true);
+        // } 
+        // else if (this.currentTime > (this.lastReadMessageTime - this.readMessageMinInterval)) { // grab next sequence
+        //     this.startAudio(this.queuedTime, true);
+        // }
     }
     
     scheduleTracking(channel, note, currentTime, endTime, offset, message, velocity) {
-        
+        //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
+
         return setTimeout( () => {
             var data = {
                 channel: channel,
@@ -218,82 +259,88 @@ class MIDIManager{
                 velocity: velocity
             }
             this.processMidi(data);
-        }, currentTime - offset);
+        }, (currentTime - offset)*1000);
     };
-    
-    // Playing the audio
-    
-    startAudio(currentTime, fromCache, onsuccess=null) {
-        if (!this.replayer) {
-            return;
-        }
-        if (!fromCache) {
-            if (typeof currentTime === 'undefined') {
-                currentTime = this.restart;
-            }
-            ///
-            this.playing && this.stopAudio();
-            this.playing = true;
-            this.data = this.replayer.getData();
-            this.endTime = this.getLength();
-        }
-        
-        ///
+
+    //read midi data and schedule note events
+    readMidi():void{
+
         var note;
-        var offset = 0;
+        var offset = 0;//keeps track of where we are relative to current timestep
         var messages = 0;
-        var data = this.data;
         var ctx = this.getContext();
-        var length = data.length;
-        this.queuedTime = 0.;
+
+        var length = this.data.length;
         var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
-        var foffset = currentTime - this.currentTime;
-        
-        this.startTime = ctx.currentTime;
-        for (var n = 0; n < length && messages < 100; n++) {
-            var obj = data[n];
+
+
+        //time relative to start
+        this.currentTime = ctx.currentTime - this.startTime;
+        var offset =  this.queuedTime;
+        //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
+        while (this.queuedTime <= this.currentTime + this.readMessageMinInterval*2/1000.) {
+            var obj = this.data[this.currentMidiMessageIndex ];
             var midi_time = obj[1];
             var midi_beats = obj[2];
-            var note_ms = this.beatsToSeconds(midi_beats)*1000;
-            if ((this.queuedTime += note_ms) <= currentTime) {
+            var note_s = AudioUtils.beatsToSeconds(midi_beats,this.BPM);
+            
+            this.currentBeat += AudioUtils.floorBPM(midi_beats);
+            this.currentMidiMessageIndex +=1;
+            if (this.currentMidiMessageIndex >= this.data.length){
+                console.log(`${this.filename} LOOPING`)
+                this.currentBeat =0;
+            }
+            this.currentMidiMessageIndex = this.currentMidiMessageIndex %this.data.length;
+
+            //update queued time 
+            this.queuedTime += note_s
+
+            //Skip notes we were too late to read
+            if (this.queuedTime < this.currentTime) {
+                console.log(`missed midi message ${obj[0].event.subtype}`)
                 offset = this.queuedTime;
                 continue;
             }
-            ///
-            currentTime = this.queuedTime - offset;
-            ///
+
+            //update current time
+            //currentTime = this.queuedTime - offset;
             var event = obj[0].event;
             if (event.type !== 'channel') {
+                console.log(`dropped midi message ${event.subtype}`)
                 continue;
             }
-            
-            //var channelId = event.channel;
-            // var channel = MIDI.channels[channelId];
+            var channelId = event.channel;
+            //var channel = MIDI.channels[channelId];
 
-            let channelId = 0
-            var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
+            // var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
+
             var queueTime = this.queuedTime - offset + this.startDelay;
+            offset = 0;
+            var eventTime =this.queuedTime - this.currentTime;
+            var note_data = {queue_time: this.queuedTime, beat_duration:midi_beats, scheduled_delay:eventTime };
             switch (event.subtype) {
                 case 'noteOn':
                 //if (channel.mute) break;
                 note = event.noteNumber - (this.MIDIOffset || 0);
+                // this.scheduledNotes.push(note_data);
+
                 this.eventQueue.push({
                     event: event,
                     time: queueTime,
                     //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
-                    interval: this.scheduleTracking(channelId, note, this.queuedTime + this.startDelay,this.endTime, offset - foffset, 144, event.velocity)
+                    interval: this.scheduleTracking(channelId, note, eventTime ,this.endTime, offset, 144, event.velocity)
                 });
                 messages++;
                 break;
                 case 'noteOff':
                 //if (channel.mute) break;
-                note = event.noteNumber - (this.MIDIOffset || 0);
-                this.eventQueue.push({
-                    event: event,
-                    time: queueTime,
-                    //source: MIDI.noteOff(channelId, event.noteNumber, delay),
-                    interval: this.scheduleTracking(channelId, note, this.queuedTime, this.endTime, offset - foffset, 128, 0)
-                });
+                // note = event.noteNumber - (this.MIDIOffset || 0);
+                // this.eventQueue.push({
+                //     event: event,
+                //     time: queueTime,
+                //     //source: MIDI.noteOff(channelId, event.noteNumber, delay),
+                //     interval: this.scheduleTracking(channelId, note, eventTime, this.endTime, offset , 128, 0)
+                // });
                 break;
                 case 'controller':
                 // MIDI.setController(channelId, event.controllerType, event.value, delay);
@@ -308,13 +355,44 @@ class MIDIManager{
                 break;
             }
         }
-        ///
-        onsuccess && onsuccess(this.eventQueue); 
+        //console.log(`${this.filename} Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
+
+    }
+    
+    // Playing the audio
+    startAudio(currentTime, fromCache, onsuccess=null) {
+        if (!this.replayer) {
+            return;
+        }
+        if (!fromCache) {
+            if (typeof currentTime === 'undefined') {
+                currentTime = this.restart;
+            }
+            ///
+            this.playing && this.stopAudio();
+            this.playing = true;
+            this.data = this.replayer.getData();
+            this.endTime = this.getLength();
+            this.cacheLoaded = true;
+        }
+        if (this.endTime <this.readMessageMinInterval){
+            console.log(`${this.filename} is too short, aborting`)
+            this.stop();
+            return false;
+        }
+        this.startTime = this.getContext().currentTime;
+        this.queuedTime = 0;   
+        this.currentBeat = 0;
+        return true;
+        
+        // ///
+        // onsuccess && onsuccess(this.eventQueue); 
     };
     
     stopAudio():void {
         var ctx = this.getContext();
         this.playing = false;
+        this.currentMidiMessageIndex = 0;
         this.restart += (ctx.currentTime - this.startTime) * 1000;
         // stop the audio, and intervals
         while (this.eventQueue.length) {
@@ -322,7 +400,6 @@ class MIDIManager{
             window.clearInterval(o.interval);
             if (!o.source) continue; // is not webaudio
             o.source.disconnect(0);
-            
         }
         
         // run callback to cancel any notes still playing

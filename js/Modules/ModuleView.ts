@@ -187,6 +187,14 @@ class ModuleView {
         return false;
     }
 
+    
+    isPointInMidi(x: number, y: number): boolean {
+        if (this.fMidiNode && this.fMidiNode.getBoundingClientRect().left <= x && x <= this.fMidiNode.getBoundingClientRect().right && this.fMidiNode.getBoundingClientRect().top <= y && y <= this.fMidiNode.getBoundingClientRect().bottom) {
+            return true;
+        }
+        return false;
+    }
+
     isPointInNode(x: number, y: number): boolean {
         if (this.fModuleContainer && this.fModuleContainer.getBoundingClientRect().left < x && x < this.fModuleContainer.getBoundingClientRect().right && this.fModuleContainer.getBoundingClientRect().top < y && y < this.fModuleContainer.getBoundingClientRect().bottom) {
             return true;
