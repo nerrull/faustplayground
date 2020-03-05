@@ -32,9 +32,6 @@ function resumeInit(app: App) {
     app.createAllScenes();
     app.createMenu();
 
-    var accHandler: AccelerometerHandler = new AccelerometerHandler();
-    Utilitary.accHandler = accHandler;
-    accHandler.getAccelerometerValue();
 
     Utilitary.driveApi = new DriveAPI();
     app.menu.setDriveApi(Utilitary.driveApi);

@@ -354,8 +354,7 @@ class CompositionModule extends GraphicalModule{
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule(): void {
         
-        var connector: Connector = new Connector()
-        
+        //var connector: Connector = new Connector()
         //connector.disconnectMIDIModule(this);
         super.deleteModule();
         this.deleteCallback(this);

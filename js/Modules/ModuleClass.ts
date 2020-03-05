@@ -247,12 +247,7 @@ class ModuleClass extends GraphicalModule  {
         this.moduleFaust.fDSP.setParamValue(address, value)
     }
 
-    // Updates Faust Code with new accelerometer metadata
-    updateCodeFaust(details: ElementCodeFaustParser) {
-        var m = forgeAccMetadata(details.newAccValue, details.isEnabled);
-        var s = updateAccInFaustCode(this.moduleFaust.fSource, details.sliderName, m );
-        this.moduleFaust.fSource = s;
-    }
+
 
     //Function overrides
     getNumInputs(): number{

@@ -12,9 +12,9 @@ class Utilitary {
     static idX: number = 0;
     static baseImg: string = "img/";
     static recursiveMap: ModuleTree[];//used for EquivalentFaust
-    static isAccelerometerOn: boolean = false;
-    static isAccelerometerEditOn: boolean = false;
-    static accHandler: AccelerometerHandler;
+    // static isAccelerometerOn: boolean = false;
+    // static isAccelerometerEditOn: boolean = false;
+    // static accHandler: AccelerometerHandler;
     static driveApi: DriveAPI;
 
     static errorCallBack(message: string) {
@@ -150,7 +150,7 @@ interface Factory {
     name: string;
     sha_key: string;
     code: string;
-    isMidi: boolean
+    isMidi: boolean;
 }
 interface HTMLInterfaceContainer extends HTMLDivElement {
     unlitClassname: string;

@@ -59,7 +59,6 @@ class FaustInterfaceControler {
     itemParam: Iitem;
     unit: string;
     precision: string;
-    hasAccelerometer: boolean;
     isEnabled: boolean;
     accDefault: string = "0 0 -10 0 10";
     acc: string;
@@ -232,7 +231,7 @@ class FaustInterfaceControler {
 
     static addButton(name, callback):FaustInterfaceControler{
 
-        var itemElement =  {type:"button", label:name};
+        var itemElement  :Iitem=  {type:"button", label:name};
         var controler: FaustInterfaceControler = new FaustInterfaceControler(
             (faustInterface) => { callback() },
             (adress, value) => { }
@@ -244,7 +243,7 @@ class FaustInterfaceControler {
 
     static addMidiLabel(name, callback):FaustInterfaceControler{
 
-        var itemElement =  { type:"midilabel", label:name};
+        var itemElement :Iitem=  { type:"midilabel", label:name};
         var controler: FaustInterfaceControler = new FaustInterfaceControler(
             (faustInterface) => { callback() },
             (adress, value) => { }

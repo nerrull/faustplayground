@@ -1,6 +1,4 @@
 ﻿//MenuView.ts : MenuView Class which contains all the graphical parts of the menu
-/// <reference path="../Accelerometer.ts"/>
-/// <reference path="AccelerometerEditView.ts"/>
 /// <reference path="LoadView.ts"/>
 /// <reference path="SaveView.ts"/>
 
@@ -30,7 +28,6 @@ class MenuView {
     saveView: SaveView;
     exportView: ExportView;
     helpView: HelpView;
-    accEditView: AccelerometerEditView;
     menuColorDefault: string = "rgba(227, 64, 80, 0.73)";
     menuColorSelected: string = "rgb(209, 64, 80)";
 
@@ -95,9 +92,6 @@ class MenuView {
         cleanButton.className = "buttonsLittleMenu";
         this.cleanButton = cleanButton;
 
-        if (!Utilitary.isAccelerometerOn) {
-            accButton.style.opacity = "0.2";
-        }
 
         buttonsMenu.appendChild(libraryButtonMenu);
         buttonsMenu.appendChild(loadButtonMenu)
@@ -157,10 +151,6 @@ class MenuView {
         helpContent.style.display = "none";
         this.helpView = helpView;
 
-        var accEditView: AccelerometerEditView = new AccelerometerEditView();
-        var accEditContent = accEditView.initAccelerometerEdit();
-        accEditContent.style.display = "none";
-        this.accEditView = accEditView;
 
         contentsMenu.appendChild(CloseButtonContainer);
         contentsMenu.appendChild(libraryContent);
@@ -171,7 +161,6 @@ class MenuView {
 
         menuContainer.appendChild(buttonsMenu);
         menuContainer.appendChild(contentsMenu);
-        menuContainer.appendChild(accEditContent);
 
         htmlContainer.appendChild(menuContainer);
         this.HTMLElementsMenu.push(libraryContent, loadContent, saveContent, exportContent, helpContent)

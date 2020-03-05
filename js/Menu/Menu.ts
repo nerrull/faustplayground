@@ -8,7 +8,6 @@
     /// <reference path="HelpView.ts"/>
     /// <reference path="Load.ts"/>
     /// <reference path="Save.ts"/>
-    /// <reference path="AccelerometerEdit.ts"/>
     /// <reference path="../DriveAPI.ts"/>
     /// <reference path="../Messages.ts"/>
 
@@ -33,10 +32,8 @@ class Menu {
     load: Load
     save: Save;
     expor: Export;
-    accEdit: AccelerometerEdit;
     help: Help;
     isFullScreen: boolean = false;
-    isAccelerometer: boolean = Utilitary.isAccelerometerOn;
     drive: DriveAPI;
 
     constructor(htmlContainer: HTMLElement) {
@@ -53,7 +50,6 @@ class Menu {
         this.menuView.saveButton.addEventListener("click", () => { this.menuHandler(this.newMenuChoices = MenuChoices.save) });
         this.menuView.loadButton.addEventListener("click", () => { this.menuHandler(this.newMenuChoices = MenuChoices.load) });
         this.menuView.fullScreenButton.addEventListener("click", () => { this.fullScreen() });
-        this.menuView.accButton.addEventListener("click", () => { this.accelerometer() });
         this.menuView.cleanButton.addEventListener("click", () => { new Confirm(Utilitary.messageRessource.confirmEmptyScene, (callback) => { this.cleanScene(callback) }) });
 
         //add eventListern customs
@@ -88,7 +84,6 @@ class Menu {
         this.expor.setEventListeners();
         this.help = new Help();
         this.help.helpView = this.menuView.helpView;
-        this.accEdit = new AccelerometerEdit(this.menuView.accEditView);
     }
 
     // dispatch the action of the menu buttons to the right submenu handler
@@ -263,11 +258,11 @@ class Menu {
             case MenuChoices.null:
                 this.menuView.editButtonMenu.style.backgroundColor = "#00C50D";
                 this.menuView.editButtonMenu.style.boxShadow = "yellow 0px 0px 51px inset";
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.currentMenuChoices = MenuChoices.edit;
                 break;
             case MenuChoices.edit:
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.menuView.editButtonMenu.style.backgroundColor = this.menuView.menuColorDefault;
                 this.menuView.editButtonMenu.style.boxShadow = "none";
                 this.menuView.contentsMenu.style.display = "none";
@@ -277,7 +272,7 @@ class Menu {
                 this.cleanMenu();
                 this.menuView.editButtonMenu.style.backgroundColor = "#00C50D";
                 this.menuView.editButtonMenu.style.boxShadow = "yellow 0px 0px 51px inset";
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.menuView.contentsMenu.style.display = "none";
                 this.currentMenuChoices = MenuChoices.edit;
                 break;
@@ -295,12 +290,6 @@ class Menu {
 
     //hide all elements currently displayed in the menu
     cleanMenu() {
-        if (this.accEdit.isOn) {
-            this.accEdit.editAction()
-            this.menuView.editButtonMenu.style.backgroundColor = this.menuView.menuColorDefault;
-            this.menuView.editButtonMenu.style.boxShadow = "none";
-            this.menuView.contentsMenu.style.display = "block";
-        }
         for (var i = 0; i < this.menuView.HTMLElementsMenu.length; i++) {
             this.menuView.HTMLElementsMenu[i].style.display = "none";
         }
@@ -342,42 +331,6 @@ class Menu {
                 document.documentElement.mozRequestFullScreen()
             }
             this.isFullScreen = true;
-        }
-    }
-
-    //handle the enabing/disabling of all slider having a accelerometer
-    accelerometer() {
-        if (this.isAccelerometer) {
-            this.isAccelerometer = false;
-            Utilitary.isAccelerometerOn = false;
-            this.menuView.accButton.style.opacity = "0.3";
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var acc = AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider;
-                var slider = AccelerometerHandler.faustInterfaceControler[i].faustInterfaceView.slider;
-                acc.isActive = false;
-                slider.classList.remove("not-allowed");
-                slider.classList.add("allowed");
-                if (!Utilitary.isAccelerometerEditOn) {
-                    slider.disabled = false;
-                }
-
-            }
-        } else if (!this.isAccelerometer) {
-            this.isAccelerometer = true;
-            Utilitary.isAccelerometerOn = true;
-            this.menuView.accButton.style.opacity = "1";
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var acc = AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider;
-                var slider = AccelerometerHandler.faustInterfaceControler[i].faustInterfaceView.slider;
-                if (acc.isEnabled) {
-                    acc.isActive = true;
-                    slider.classList.add("not-allowed");
-                    slider.classList.remove("allowed");
-                    if (!Utilitary.isAccelerometerEditOn) {
-                        slider.disabled = true;
-                    }
-                }
-            }
         }
     }
 

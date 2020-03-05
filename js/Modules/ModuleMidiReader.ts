@@ -108,8 +108,7 @@ class ModuleMIDIReader extends GraphicalModule  {
         document.dispatchEvent(event);
         // this.moduleFaust.fTempName = name;
         // this.moduleFaust.fTempSource = code;
-        var module: ModuleMIDIReader = this;
-
+        //var module: ModuleMIDIReader = this;
         //this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y});
     }
 
@@ -135,25 +134,8 @@ class ModuleMIDIReader extends GraphicalModule  {
 
     // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
     //Override
-    setFaustInterfaceControles(): void {
-        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
-       
-        var moduleFaustInterface = new FaustInterfaceControler(
-            (faustInterface) => { this.interfaceSliderCallback(faustInterface) },
-            (adress, value) => { this.setParamValue(adress, value) }
-            );
-        
-        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => {this.MIDIcontrol.start()}))
-        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => {this.MIDIcontrol.stop()}))
-        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => {this.MIDIcontrol.pause()}))
 
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Start", init:"", type:"button", address:""})
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Stop", init:"", type:"button", address:""})
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Pause", init:"", type:"button", address:""})
-
-        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
-    }
-
+    
     // interface Iitem{
     //     label: string;
     //     init: string;
@@ -164,6 +146,21 @@ class ModuleMIDIReader extends GraphicalModule  {
     //     step: string;
     //     meta: FaustMeta[];
     // }
+
+    setFaustInterfaceControles(): void {
+        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
+       
+        // var moduleFaustInterface = new FaustInterfaceControler(
+        //     (faustInterface) => { this.interfaceSliderCallback(faustInterface) },
+        //     (adress, value) => { this.setParamValue(adress, value) }
+        //     );
+        
+        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => {this.MIDIcontrol.start()}))
+        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => {this.MIDIcontrol.stop()}))
+        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => {this.MIDIcontrol.pause()}))
+        
+        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
+    }
 
 
     // Delete all FaustInterfaceControler

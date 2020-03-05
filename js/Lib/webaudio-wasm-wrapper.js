@@ -451,6 +451,7 @@ faust.createDSPFactoryAux = function (code, argv, internal_memory, callback)
                                                res2.code,
                                                res2.code_source,
                                                res2.helpers,
+                                               !internal_memory,
                                                sha_key,
                                                callback);
         } else {
@@ -462,6 +463,7 @@ faust.createDSPFactoryAux = function (code, argv, internal_memory, callback)
                                                null,
                                                null,
                                                null,
+                                               !internal_memory,
                                                sha_key,
                                                callback);
         }
@@ -595,6 +597,7 @@ faust.writeDSPFactoryToMachine = function (factory)
             code_effect: faust.ab2str(factory.code_effect),
             code_source_effect: factory.code_source_effect,
             helpers_effect : factory.helpers_effect,
+            isMidi : factory.isMidi,
             };
 }
 
@@ -624,6 +627,7 @@ faust.readDSPFactoryFromMachine = function (machine, callback)
                                            faust.str2ab(machine.code_effect),
                                            machine.code_source_effect,
                                            machine.helpers_effect,
+                                           machine.isMidi,
                                            sha_key,
                                            callback);
     }
@@ -637,6 +641,7 @@ faust.readDSPFactoryFromMachineAux = function (factory_name1,
                                                factory_code2,
                                                factory_code_source2,
                                                helpers_code2,
+                                               isMidi,
                                                sha_key,
                                                callback)
 {
@@ -660,6 +665,7 @@ faust.readDSPFactoryFromMachineAux = function (factory_name1,
         console.log("WASM compilation duration : " + (time2 - time1));
 
         var factory = {};
+        factory.isMidi = isMidi;
         factory.polyphony = [];  // Default mode
 
         factory.code = factory_code1;

@@ -263,26 +263,25 @@ class Scene {
                     }
 
                 }
-                var faustIControler = this.fModuleList[i].moduleControles;
-                var jsonAccs = new JsonAccSaves();
+                //var faustIControler = this.fModuleList[i].moduleControles;
+                //var jsonAccs = new JsonAccSaves();
 
-                jsonAccs.controles = [];
-                for (var j = 0; j < faustIControler.length; j++) {
-                    var jsonAcc: JsonAccSave = new JsonAccSave();
-                    var acc = faustIControler[j].accelerometerSlider;
-                    jsonAcc.axis = acc.axis.toString();
-                    jsonAcc.curve = acc.curve.toString();
-                    jsonAcc.amin = acc.amin.toString();
-                    jsonAcc.amid = acc.amid.toString();
-                    jsonAcc.amax = acc.amax.toString();
-                    jsonAcc.adress = acc.address;
-                    jsonAcc.isEnabled = acc.isEnabled;
-                    jsonAccs.controles.push(jsonAcc);
-                }
+                // jsonAccs.controles = [];
+                // for (var j = 0; j < faustIControler.length; j++) {
+                //     var jsonAcc: JsonAccSave = new JsonAccSave();
+                //     jsonAcc.axis = acc.axis.toString();
+                //     jsonAcc.curve = acc.curve.toString();
+                //     jsonAcc.amin = acc.amin.toString();
+                //     jsonAcc.amid = acc.amid.toString();
+                //     jsonAcc.amax = acc.amax.toString();
+                //     jsonAcc.adress = acc.address;
+                //     jsonAcc.isEnabled = acc.isEnabled;
+                //     jsonAccs.controles.push(jsonAcc);
+                // }
+
                 jsonObject.inputs = jsonInputs;
                 jsonObject.outputs = jsonOutputs;
                 jsonObject.params = jsonParams;
-                jsonObject.acc = jsonAccs;
 
                 var factorySave: JsonFactorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
 
@@ -296,6 +295,8 @@ class Scene {
                     jsonObject.factory.code_effect = factorySave.code_effect;
                     jsonObject.factory.code_source_effect = factorySave.code_source_effect;
                     jsonObject.factory.helpers_effect = factorySave.helpers_effect;
+                    jsonObject.factory.isMidi = factorySave.isMidi;
+
     	         }
             }
         }
@@ -335,6 +336,7 @@ class Scene {
         if (this.arrayRecalScene.length != 0) {
             var jsonObject = this.arrayRecalScene[0]
             if (jsonObject.factory != undefined) {
+                console.log(jsonObject);
                 this.tempPatchId = jsonObject.patchId;
                 faust.readDSPFactoryFromMachine(jsonObject.factory, (factory) => {
                 	 this.updateAppTempModuleInfo(jsonObject);
@@ -374,7 +376,7 @@ class Scene {
     }
 
     //create Module then remove corresponding JsonSaveModule from arrayRecalScene at rank 0
-    //re-lunch module of following Module/JsonSaveModule
+    //re-launch module of following Module/JsonSaveModule
     private createModule(factory:Factory):void {
         try {
             if (!factory) {
@@ -399,63 +401,18 @@ class Scene {
             	module.recallInterfaceParams();
             	module.setFaustInterfaceControles();
             	module.createFaustInterface();
-            	module.addInputOutputNodes();
-            	this.addModule(module);
-            	this.recallAccValues(this.arrayRecalScene[0].acc, module);
+                module.addInputOutputNodes();
+                this.addModule(module);
+
+                //next module
             	this.arrayRecalScene.shift();
             	this.launchModuleCreation();
             });
         } catch (e) {
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
+            //next module
             this.arrayRecalScene.shift();
             this.launchModuleCreation()
-        }
-    }
-
-    //recall of the accelerometer mapping parameters for each FaustInterfaceControler of the Module
-    recallAccValues(jsonAccs: IJsonAccSaves, module: ModuleClass) {
-        if (jsonAccs != undefined) {
-            for (var i in jsonAccs.controles) {
-                var controle = jsonAccs.controles[i];
-                if (controle != undefined) {
-                    for (var j in module.moduleControles) {
-                        var moduleControle = module.moduleControles[j];
-                        if (moduleControle.itemParam.address == controle.adress) {
-                            var group = moduleControle.faustInterfaceView.group;
-                            var slider = moduleControle.faustInterfaceView.slider;
-                            var acc = moduleControle.accelerometerSlider;
-                            moduleControle.accelerometerSlider.acc = controle.axis + " " + controle.curve + " " + controle.amin + " " + controle.amid + " " + controle.amax;
-                            moduleControle.acc = controle.axis + " " + controle.curve + " " + controle.amin + " " + controle.amid + " " + controle.amax;
-                            acc.amax = parseFloat(controle.amax);
-                            acc.amid = parseFloat(controle.amid);
-                            acc.amin = parseFloat(controle.amin);
-                            acc.axis = parseFloat(controle.axis);
-                            acc.curve = parseFloat(controle.curve);
-                            acc.isEnabled = controle.isEnabled;
-                            AccelerometerHandler.curveSplitter(acc);
-
-                            group.className = "control-group";
-                            group.classList.add(Axis[controle.axis]);
-                            if (!controle.isEnabled) {
-                                group.classList.add("disabledAcc");
-                                slider.classList.add("allowed");
-                                slider.classList.remove("not-allowed");
-                                slider.disabled = false;
-                            } else {
-                                if (acc.isActive) {
-                                    slider.classList.add("not-allowed");
-                                    slider.classList.remove("allowed");
-                                    slider.disabled = true;
-                                } else {
-                                    slider.classList.add("allowed");
-                                    slider.classList.remove("not-allowed");
-                                    slider.disabled = false;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -606,7 +563,6 @@ interface IJsonSaveModule {
     inputs: IJsonInputsSave;
     outputs: IJsonOutputsSave;
     params: IJsonParamsSave;
-    acc: IJsonAccSaves;
     factory: IJsonFactorySave;
 }
 
@@ -619,8 +575,7 @@ class JsonSaveModule implements IJsonSaveModule {
     y: string;
     inputs: IJsonInputsSave;
     outputs: IJsonOutputsSave;
-    params: IJsonParamsSave
-    acc: IJsonAccSaves;
+    params: IJsonParamsSave;
     factory: IJsonFactorySave;
 }
 
@@ -689,6 +644,7 @@ interface IJsonFactorySave {
     code_effect: string;
     code_source_effect: string;
     helpers_effect: string;
+    isMidi:string;
 }
 class JsonFactorySave implements IJsonFactorySave {
     name: string;
@@ -699,4 +655,5 @@ class JsonFactorySave implements IJsonFactorySave {
     code_effect: string;
     code_source_effect: string;
     helpers_effect: string;
+    isMidi:string;
 }

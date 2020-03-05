@@ -270,8 +270,8 @@ class MIDIManager{
         var messages = 0;
         var ctx = this.getContext();
 
-        var length = this.data.length;
-        var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
+        //var length = this.data.length;
+        //var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
 
 
         //time relative to start
@@ -280,7 +280,7 @@ class MIDIManager{
         //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
         while (this.queuedTime <= this.currentTime + this.readMessageMinInterval*2/1000.) {
             var obj = this.data[this.currentMidiMessageIndex ];
-            var midi_time = obj[1];
+            //var midi_time = obj[1];
             var midi_beats = obj[2];
             var note_s = AudioUtils.beatsToSeconds(midi_beats,this.BPM);
             
@@ -317,7 +317,7 @@ class MIDIManager{
             var queueTime = this.queuedTime - offset + this.startDelay;
             offset = 0;
             var eventTime =this.queuedTime - this.currentTime;
-            var note_data = {queue_time: this.queuedTime, beat_duration:midi_beats, scheduled_delay:eventTime };
+            //var note_data = {queue_time: this.queuedTime, beat_duration:midi_beats, scheduled_delay:eventTime };
             switch (event.subtype) {
                 case 'noteOn':
                 //if (channel.mute) break;

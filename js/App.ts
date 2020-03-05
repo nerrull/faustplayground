@@ -76,16 +76,13 @@ class App {
 
         //add eventlistener on the scene to hide menu when clicked or touched
         Utilitary.currentScene.getSceneContainer().addEventListener("mousedown", () => {
-            if (!this.menu.accEdit.isOn) {
                 this.menu.newMenuChoices = MenuChoices.null
                 this.menu.menuHandler(this.menu.newMenuChoices)
-            }
+
         }, true);
         Utilitary.currentScene.getSceneContainer().addEventListener("touchstart", () => {
-            if (!this.menu.accEdit.isOn) {
                 this.menu.newMenuChoices = MenuChoices.null
                 this.menu.menuHandler(this.menu.newMenuChoices)
-            }
         }, true);
     }
 
@@ -100,13 +97,13 @@ class App {
     ****************  CREATE FAUST FACTORIES AND MODULES ****************
     ********************************************************************/
 
-    compileFaust(compileFaust: CompileFaust) {
+    compileFaust(compileFaustParameters: CompileFaust) {
       
         //  Temporarily Saving parameters of compilation
-        this.tempModuleName = compileFaust.name;
-        this.tempModuleSourceCode = compileFaust.sourceCode;
-        this.tempModuleX = compileFaust.x;
-        this.tempModuleY = compileFaust.y;
+        this.tempModuleName = compileFaustParameters.name;
+        this.tempModuleSourceCode = compileFaustParameters.sourceCode;
+        this.tempModuleX = compileFaustParameters.x;
+        this.tempModuleY = compileFaustParameters.y;
 
         var currentScene: Scene = Utilitary.currentScene;
 
@@ -116,20 +113,20 @@ class App {
         var libpath = location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/')) + "/faustlibraries/";
         var args: string[] = ["-I", libpath, "-ftz", "2"];
 
-        console.log("trying to compile file" + compileFaust);
+        console.log("trying to compile file" + compileFaustParameters);
         //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
         //check if it's an
         try {
             //todo make poly work
-            if (compileFaust.isMidi){
-                this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => { 
+            if (compileFaustParameters.isMidi){
+                this.factory = faust.createPolyDSPFactory(compileFaustParameters.sourceCode, args, (factory) => { 
                     factory.isMidi=true;
-                    compileFaust.callback(factory) });
+                    compileFaustParameters.callback(factory) });
             }
             else{
-                this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => { 
+                this.factory = faust.createDSPFactory(compileFaustParameters.sourceCode, args, (factory) => { 
                     factory.isMidi=false;
-                    compileFaust.callback(factory) });
+                    compileFaustParameters.callback(factory) });
             }
         } catch (error) {
             new Message(error)
@@ -271,7 +268,8 @@ class App {
         }
 
         else if (moduleJson.moduleType === "CompositionModule"){
-            let module: CompositionModule = new CompositionModule(Utilitary.idX++, this.tempModuleX,
+            //create new module
+            new CompositionModule(Utilitary.idX++, this.tempModuleX,
                 this.tempModuleY, this.tempModuleName, 
                 document.getElementById("modules"), 
                 (module) => { Utilitary.currentScene.removeModule(module) }, moduleJson, (module) =>{

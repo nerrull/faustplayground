@@ -52,7 +52,7 @@ class Connector {
         }
         
         if (destinationDSP) {
-            source.setMidiCallback((c,p,v)=> {destination.midiControl(c,p,v)})
+            source.setMidiCallback((midiInfo)=> {destination.midiControl(midiInfo)})
         }
     }
 
@@ -190,7 +190,7 @@ class Connector {
         return true;
     }
     
-    breakSingleInputConnection(source: GraphicalModule, destination: GraphicalModule, connector: Connector) {
+    breakSingleInputConnection(source: ModuleClass, destination: ModuleClass, connector: Connector) {
         
         this.disconnectModules(source, destination);
         

@@ -25,9 +25,6 @@ function Replayer(midiFile, timeWarp, eventProcessor, bpm) :any{
 			)
 		};
 	}
-
-	var nextEventInfo;
-	var samplesToNextEvent = 0;
 	
 	function getNextEvent() {
 		var ticksToNextEvent = null;

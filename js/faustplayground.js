@@ -503,8 +503,6 @@ class Utilitary {
 Utilitary.messageRessource = new Ressources();
 Utilitary.idX = 0;
 Utilitary.baseImg = "img/";
-Utilitary.isAccelerometerOn = false;
-Utilitary.isAccelerometerEditOn = false;
 class PositionModule {
 }
 class AudioUtils {
@@ -2104,12 +2102,6 @@ class ModuleClass extends GraphicalModule {
     setDSPValueCallback(address, value) {
         this.moduleFaust.fDSP.setParamValue(address, value);
     }
-    // Updates Faust Code with new accelerometer metadata
-    updateCodeFaust(details) {
-        var m = forgeAccMetadata(details.newAccValue, details.isEnabled);
-        var s = updateAccInFaustCode(this.moduleFaust.fSource, details.sliderName, m);
-        this.moduleFaust.fSource = s;
-    }
     //Function overrides
     getNumInputs() {
         return this.moduleFaust.fDSP.getNumInputs();
@@ -2478,8 +2470,6 @@ function Replayer(midiFile, timeWarp, eventProcessor, bpm) {
                 null)
         };
     }
-    var nextEventInfo;
-    var samplesToNextEvent = 0;
     function getNextEvent() {
         var ticksToNextEvent = null;
         var nextEventTrack = null;
@@ -2772,15 +2762,15 @@ class MIDIManager {
         var offset = 0; //keeps track of where we are relative to current timestep
         var messages = 0;
         var ctx = this.getContext();
-        var length = this.data.length;
-        var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
+        //var length = this.data.length;
+        //var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
         //time relative to start
         this.currentTime = ctx.currentTime - this.startTime;
         var offset = this.queuedTime;
         //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
         while (this.queuedTime <= this.currentTime + this.readMessageMinInterval * 2 / 1000.) {
             var obj = this.data[this.currentMidiMessageIndex];
-            var midi_time = obj[1];
+            //var midi_time = obj[1];
             var midi_beats = obj[2];
             var note_s = AudioUtils.beatsToSeconds(midi_beats, this.BPM);
             this.currentBeat += AudioUtils.floorBPM(midi_beats);
@@ -2811,7 +2801,7 @@ class MIDIManager {
             var queueTime = this.queuedTime - offset + this.startDelay;
             offset = 0;
             var eventTime = this.queuedTime - this.currentTime;
-            var note_data = { queue_time: this.queuedTime, beat_duration: midi_beats, scheduled_delay: eventTime };
+            //var note_data = {queue_time: this.queuedTime, beat_duration:midi_beats, scheduled_delay:eventTime };
             switch (event.subtype) {
                 case 'noteOn':
                     //if (channel.mute) break;
@@ -3008,7 +2998,7 @@ class ModuleMIDIReader extends GraphicalModule {
         document.dispatchEvent(event);
         // this.moduleFaust.fTempName = name;
         // this.moduleFaust.fTempSource = code;
-        var module = this;
+        //var module: ModuleMIDIReader = this;
         //this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y});
     }
     //---- React to recompilation triggered by click on icon
@@ -3029,17 +3019,6 @@ class ModuleMIDIReader extends GraphicalModule {
     /***************** CREATE/DELETE the DSP Interface ********************/
     // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
     //Override
-    setFaustInterfaceControles() {
-        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
-        var moduleFaustInterface = new FaustInterfaceControler((faustInterface) => { this.interfaceSliderCallback(faustInterface); }, (adress, value) => { this.setParamValue(adress, value); });
-        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => { this.MIDIcontrol.start(); }));
-        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => { this.MIDIcontrol.stop(); }));
-        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => { this.MIDIcontrol.pause(); }));
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Start", init:"", type:"button", address:""})
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Stop", init:"", type:"button", address:""})
-        // moduleFaustInterface.faustInterfaceView.addFaustButton({label:"Pause", init:"", type:"button", address:""})
-        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
-    }
     // interface Iitem{
     //     label: string;
     //     init: string;
@@ -3050,6 +3029,17 @@ class ModuleMIDIReader extends GraphicalModule {
     //     step: string;
     //     meta: FaustMeta[];
     // }
+    setFaustInterfaceControles() {
+        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
+        // var moduleFaustInterface = new FaustInterfaceControler(
+        //     (faustInterface) => { this.interfaceSliderCallback(faustInterface) },
+        //     (adress, value) => { this.setParamValue(adress, value) }
+        //     );
+        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => { this.MIDIcontrol.start(); }));
+        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => { this.MIDIcontrol.stop(); }));
+        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => { this.MIDIcontrol.pause(); }));
+        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
+    }
     // Delete all FaustInterfaceControler
     deleteFaustInterface() {
         super.deleteFaustInterface();
@@ -3117,7 +3107,7 @@ class Connector {
             destinationDSP = destination.moduleFaust.getDSP();
         }
         if (destinationDSP) {
-            source.setMidiCallback((c, p, v) => { destination.midiControl(c, p, v); });
+            source.setMidiCallback((midiInfo) => { destination.midiControl(midiInfo); });
         }
     }
     // Connect Nodes in Web Audio Graph
@@ -4234,25 +4224,23 @@ class Scene {
                         jsonParams.sliders.push(jsonSlider);
                     }
                 }
-                var faustIControler = this.fModuleList[i].moduleControles;
-                var jsonAccs = new JsonAccSaves();
-                jsonAccs.controles = [];
-                for (var j = 0; j < faustIControler.length; j++) {
-                    var jsonAcc = new JsonAccSave();
-                    var acc = faustIControler[j].accelerometerSlider;
-                    jsonAcc.axis = acc.axis.toString();
-                    jsonAcc.curve = acc.curve.toString();
-                    jsonAcc.amin = acc.amin.toString();
-                    jsonAcc.amid = acc.amid.toString();
-                    jsonAcc.amax = acc.amax.toString();
-                    jsonAcc.adress = acc.address;
-                    jsonAcc.isEnabled = acc.isEnabled;
-                    jsonAccs.controles.push(jsonAcc);
-                }
+                //var faustIControler = this.fModuleList[i].moduleControles;
+                //var jsonAccs = new JsonAccSaves();
+                // jsonAccs.controles = [];
+                // for (var j = 0; j < faustIControler.length; j++) {
+                //     var jsonAcc: JsonAccSave = new JsonAccSave();
+                //     jsonAcc.axis = acc.axis.toString();
+                //     jsonAcc.curve = acc.curve.toString();
+                //     jsonAcc.amin = acc.amin.toString();
+                //     jsonAcc.amid = acc.amid.toString();
+                //     jsonAcc.amax = acc.amax.toString();
+                //     jsonAcc.adress = acc.address;
+                //     jsonAcc.isEnabled = acc.isEnabled;
+                //     jsonAccs.controles.push(jsonAcc);
+                // }
                 jsonObject.inputs = jsonInputs;
                 jsonObject.outputs = jsonOutputs;
                 jsonObject.params = jsonParams;
-                jsonObject.acc = jsonAccs;
                 var factorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
                 if (factorySave && isPrecompiled) {
                     jsonObject.factory = new JsonFactorySave();
@@ -4264,6 +4252,7 @@ class Scene {
                     jsonObject.factory.code_effect = factorySave.code_effect;
                     jsonObject.factory.code_source_effect = factorySave.code_source_effect;
                     jsonObject.factory.helpers_effect = factorySave.helpers_effect;
+                    jsonObject.factory.isMidi = factorySave.isMidi;
                 }
             }
         }
@@ -4301,6 +4290,7 @@ class Scene {
         if (this.arrayRecalScene.length != 0) {
             var jsonObject = this.arrayRecalScene[0];
             if (jsonObject.factory != undefined) {
+                console.log(jsonObject);
                 this.tempPatchId = jsonObject.patchId;
                 faust.readDSPFactoryFromMachine(jsonObject.factory, (factory) => {
                     this.updateAppTempModuleInfo(jsonObject);
@@ -4342,7 +4332,7 @@ class Scene {
         this.tempParams = jsonSaveObject.params;
     }
     //create Module then remove corresponding JsonSaveModule from arrayRecalScene at rank 0
-    //re-lunch module of following Module/JsonSaveModule
+    //re-launch module of following Module/JsonSaveModule
     createModule(factory) {
         try {
             if (!factory) {
@@ -4368,62 +4358,16 @@ class Scene {
                 module.createFaustInterface();
                 module.addInputOutputNodes();
                 this.addModule(module);
-                this.recallAccValues(this.arrayRecalScene[0].acc, module);
+                //next module
                 this.arrayRecalScene.shift();
                 this.launchModuleCreation();
             });
         }
         catch (e) {
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
+            //next module
             this.arrayRecalScene.shift();
             this.launchModuleCreation();
-        }
-    }
-    //recall of the accelerometer mapping parameters for each FaustInterfaceControler of the Module
-    recallAccValues(jsonAccs, module) {
-        if (jsonAccs != undefined) {
-            for (var i in jsonAccs.controles) {
-                var controle = jsonAccs.controles[i];
-                if (controle != undefined) {
-                    for (var j in module.moduleControles) {
-                        var moduleControle = module.moduleControles[j];
-                        if (moduleControle.itemParam.address == controle.adress) {
-                            var group = moduleControle.faustInterfaceView.group;
-                            var slider = moduleControle.faustInterfaceView.slider;
-                            var acc = moduleControle.accelerometerSlider;
-                            moduleControle.accelerometerSlider.acc = controle.axis + " " + controle.curve + " " + controle.amin + " " + controle.amid + " " + controle.amax;
-                            moduleControle.acc = controle.axis + " " + controle.curve + " " + controle.amin + " " + controle.amid + " " + controle.amax;
-                            acc.amax = parseFloat(controle.amax);
-                            acc.amid = parseFloat(controle.amid);
-                            acc.amin = parseFloat(controle.amin);
-                            acc.axis = parseFloat(controle.axis);
-                            acc.curve = parseFloat(controle.curve);
-                            acc.isEnabled = controle.isEnabled;
-                            AccelerometerHandler.curveSplitter(acc);
-                            group.className = "control-group";
-                            group.classList.add(Axis[controle.axis]);
-                            if (!controle.isEnabled) {
-                                group.classList.add("disabledAcc");
-                                slider.classList.add("allowed");
-                                slider.classList.remove("not-allowed");
-                                slider.disabled = false;
-                            }
-                            else {
-                                if (acc.isActive) {
-                                    slider.classList.add("not-allowed");
-                                    slider.classList.remove("allowed");
-                                    slider.disabled = true;
-                                }
-                                else {
-                                    slider.classList.add("allowed");
-                                    slider.classList.remove("not-allowed");
-                                    slider.disabled = false;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
     //connect Modules recalled
@@ -4837,7 +4781,7 @@ class CompositionModule extends GraphicalModule {
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
-        var connector = new Connector();
+        //var connector: Connector = new Connector()
         //connector.disconnectMIDIModule(this);
         super.deleteModule();
         this.deleteCallback(this);
@@ -5692,928 +5636,6 @@ class Save {
         confirmCallBack();
     }
 }
-//Accelerometer Class
-/// <reference path="Utilitary.ts"/>
-/// <reference path="Modules/FaustInterface.ts"/>
-var Axis;
-(function (Axis) {
-    Axis[Axis["x"] = 0] = "x";
-    Axis[Axis["y"] = 1] = "y";
-    Axis[Axis["z"] = 2] = "z";
-})(Axis || (Axis = {}));
-;
-var Curve;
-(function (Curve) {
-    Curve[Curve["Up"] = 0] = "Up";
-    Curve[Curve["Down"] = 1] = "Down";
-    Curve[Curve["UpDown"] = 2] = "UpDown";
-    Curve[Curve["DownUp"] = 3] = "DownUp";
-})(Curve || (Curve = {}));
-;
-//object describing value off accelerometer metadata values.
-class AccMeta {
-}
-//Contains the info regarding the mapping of the FaustInterfaceControler and the accelerometer
-class AccelerometerSlider {
-    constructor(accParams) {
-        if (accParams != null) {
-            this.isEnabled = accParams.isEnabled;
-            this.acc = accParams.acc;
-            this.setAttributes(accParams.acc);
-            this.address = accParams.address;
-            this.min = accParams.min;
-            this.max = accParams.max;
-            this.init = accParams.init;
-            this.label = accParams.label;
-            this.isActive = Utilitary.isAccelerometerOn;
-        }
-    }
-    setAttributes(fMetaAcc) {
-        if (fMetaAcc != null) {
-            var arrayMeta = fMetaAcc.split(" ");
-            this.axis = parseInt(arrayMeta[0]);
-            this.curve = parseInt(arrayMeta[1]);
-            this.amin = parseInt(arrayMeta[2]);
-            this.amid = parseInt(arrayMeta[3]);
-            this.amax = parseInt(arrayMeta[4]);
-        }
-    }
-    setAttributesDetailed(axis, curve, min, mid, max) {
-        this.axis = axis;
-        this.curve = curve;
-        this.amin = min;
-        this.amid = mid;
-        this.amax = max;
-    }
-}
-//object responsible of storing all accelerometerSlider and propagate to them the accelerometer infos.
-class AccelerometerHandler {
-    // get Accelerometer value
-    getAccelerometerValue() {
-        if (window.DeviceMotionEvent) {
-            window.addEventListener("devicemotion", (event) => { this.propagate(event); }, false);
-        }
-        else {
-            // Browser doesn't support DeviceMotionEvent
-            console.log(Utilitary.messageRessource.noDeviceMotion);
-        }
-    }
-    // propagate the new x, y, z value of the accelerometer to the registred object
-    propagate(event) {
-        var x = event.accelerationIncludingGravity.x;
-        var y = event.accelerationIncludingGravity.y;
-        var z = event.accelerationIncludingGravity.z;
-        for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-            if (AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isActive && AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider.isEnabled) {
-                this.axisSplitter(AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider, x, y, z, this.applyNewValueToModule);
-            }
-        }
-        // update the faustInterfaceControler of the AccelerometerEditView
-        if (AccelerometerHandler.faustInterfaceControlerEdit != null) {
-            this.axisSplitter(AccelerometerHandler.faustInterfaceControlerEdit.accelerometerSlider, x, y, z, this.applyValueToEdit);
-        }
-    }
-    //create and register accelerometerSlide
-    static registerAcceleratedSlider(accParams, faustInterfaceControler, sliderEdit) {
-        var accelerometerSlide = new AccelerometerSlider(accParams);
-        faustInterfaceControler.accelerometerSlider = accelerometerSlide;
-        AccelerometerHandler.curveSplitter(accelerometerSlide);
-        if (sliderEdit) {
-            AccelerometerHandler.faustInterfaceControlerEdit = faustInterfaceControler;
-        }
-        else {
-            AccelerometerHandler.faustInterfaceControler.push(faustInterfaceControler);
-        }
-    }
-    //give the good axis value to the accelerometerslider, convert it to the faust value before
-    axisSplitter(accelerometerSlide, x, y, z, callBack) {
-        switch (accelerometerSlide.axis) {
-            case Axis.x:
-                var newVal = accelerometerSlide.converter.uiToFaust(x);
-                callBack(accelerometerSlide, newVal, x);
-                break;
-            case Axis.y:
-                var newVal = accelerometerSlide.converter.uiToFaust(y);
-                callBack(accelerometerSlide, newVal, y);
-                break;
-            case Axis.z:
-                var newVal = accelerometerSlide.converter.uiToFaust(z);
-                callBack(accelerometerSlide, newVal, z);
-                break;
-        }
-    }
-    //update value of the dsp
-    applyNewValueToModule(accSlid, newVal, axeValue) {
-        accSlid.callbackValueChange(accSlid.address, newVal);
-    }
-    //update value of the edit range in AccelerometerEditView
-    applyValueToEdit(accSlid, newVal, axeValue) {
-        AccelerometerHandler.faustInterfaceControlerEdit.faustInterfaceView.slider.value = axeValue.toString();
-    }
-    //Apply the right converter with the right curve to an accelerometerSlider
-    static curveSplitter(accelerometerSlide) {
-        switch (accelerometerSlide.curve) {
-            case Curve.Up:
-                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.Down:
-                accelerometerSlide.converter = new AccDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.UpDown:
-                accelerometerSlide.converter = new AccUpDownConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            case Curve.DownUp:
-                accelerometerSlide.converter = new AccDownUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-                break;
-            default:
-                accelerometerSlide.converter = new AccUpConverter(accelerometerSlide.amin, accelerometerSlide.amid, accelerometerSlide.amax, accelerometerSlide.min, accelerometerSlide.init, accelerometerSlide.max);
-        }
-    }
-}
-//array containing all the FaustInterfaceControler of the scene
-AccelerometerHandler.faustInterfaceControler = [];
-//faustInterfaceControler of the AccelerometerEditView
-AccelerometerHandler.faustInterfaceControlerEdit = null;
-/***************************************************************************************
-********************  Converter objects use to map acc and faust value *****************
-****************************************************************************************/
-class MinMaxClip {
-    constructor(x, y) {
-        this.fLo = Math.min(x, y);
-        this.fHi = Math.max(x, y);
-    }
-    clip(x) {
-        if (x < this.fLo) {
-            return this.fLo;
-        }
-        else if (x > this.fHi) {
-            return this.fHi;
-        }
-        else {
-            return x;
-        }
-    }
-}
-class Interpolator {
-    constructor(lo, hi, v1, v2) {
-        this.range = new MinMaxClip(lo, hi);
-        if (hi != lo) {
-            //regular case
-            this.fCoef = (v2 - v1) / (hi - lo);
-            this.fOffset = v1 - lo * this.fCoef;
-        }
-        else {
-            this.fCoef = 0;
-            this.fOffset = (v1 + v2) / 2;
-        }
-    }
-    returnMappedValue(v) {
-        var x = this.range.clip(v);
-        return this.fOffset + x * this.fCoef;
-    }
-    getLowHigh(amin, amax) {
-        return { amin: this.range.fLo, amax: this.range.fHi };
-    }
-}
-class Interpolator3pt {
-    constructor(lo, mid, hi, v1, vMid, v2) {
-        this.fSegment1 = new Interpolator(lo, mid, v1, vMid);
-        this.fSegment2 = new Interpolator(mid, hi, vMid, v2);
-        this.fMiddle = mid;
-    }
-    returnMappedValue(x) {
-        return (x < this.fMiddle) ? this.fSegment1.returnMappedValue(x) : this.fSegment2.returnMappedValue(x);
-    }
-    getMappingValues(amin, amid, amax) {
-        var lowHighSegment1 = this.fSegment1.getLowHigh(amin, amid);
-        var lowHighSegment2 = this.fSegment2.getLowHigh(amid, amax);
-        return { amin: lowHighSegment1.amin, amid: lowHighSegment2.amin, amax: lowHighSegment2.amax };
-    }
-}
-class AccUpConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmid, fmax);
-        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amin, amid, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, init, max);
-        this.faustToAcc = new Interpolator3pt(min, init, max, amin, amid, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccDownConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmid, fmin);
-        this.faustToAcc = new Interpolator3pt(fmin, fmid, fmax, amax, amid, amin);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, init, min);
-        this.faustToAcc = new Interpolator3pt(min, init, max, amax, amid, amin);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccUpDownConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmin, fmax, fmin);
-        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, min, max, min);
-        this.faustToAcc = new Interpolator(min, max, amin, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-class AccDownUpConverter {
-    constructor(amin, amid, amax, fmin, fmid, fmax) {
-        this.fActive = true;
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, fmax, fmin, fmax);
-        this.faustToAcc = new Interpolator(fmin, fmax, amin, amax);
-    }
-    uiToFaust(x) { return this.accToFaust.returnMappedValue(x); }
-    faustToUi(x) { return this.accToFaust.returnMappedValue(x); }
-    ;
-    setMappingValues(amin, amid, amax, min, init, max) {
-        this.accToFaust = new Interpolator3pt(amin, amid, amax, max, min, max);
-        this.faustToAcc = new Interpolator(min, max, amin, amax);
-    }
-    ;
-    getMappingValues(amin, amid, amax) {
-        return this.accToFaust.getMappingValues(amin, amid, amax);
-    }
-    ;
-    setActive(onOff) { this.fActive = onOff; }
-    ;
-    getActive() { return this.fActive; }
-    ;
-}
-/// <reference path="../Utilitary.ts"/>
-class AccelerometerEditView {
-    constructor() { }
-    initAccelerometerEdit() {
-        var blockLayer = document.createElement("div");
-        blockLayer.id = "accBlockLayer";
-        this.blockLayer = blockLayer;
-        var container = document.createElement("div");
-        container.id = "accEditContainer";
-        this.container = container;
-        var labelTitle = document.createElement("label");
-        labelTitle.id = "labelTitle";
-        this.labelTitle = labelTitle;
-        //radio curves
-        var radioCurveContainer = document.createElement("form");
-        radioCurveContainer.id = "radioCurveContainer";
-        this.radioCurveContainer = radioCurveContainer;
-        var label1 = document.createElement("label");
-        label1.className = "curve";
-        label1.id = "curve1";
-        label1.textContent = Utilitary.messageRessource.curve1;
-        var label2 = document.createElement("label");
-        label2.className = "curve";
-        label2.id = "curve2";
-        label2.textContent = Utilitary.messageRessource.curve2;
-        var label3 = document.createElement("label");
-        label3.className = "curve";
-        label3.id = "curve3";
-        label3.textContent = Utilitary.messageRessource.curve3;
-        var label4 = document.createElement("label");
-        label4.className = "curve";
-        label4.id = "curve4";
-        label4.textContent = Utilitary.messageRessource.curve4;
-        var radio1 = document.createElement("input");
-        radio1.id = "radio1";
-        radio1.type = "radio";
-        radio1.className = "radio";
-        radio1.name = "curve";
-        this.radioCurve1 = radio1;
-        label1.appendChild(radio1);
-        var radio2 = document.createElement("input");
-        radio2.id = "radio2";
-        radio2.type = "radio";
-        radio2.className = "radio";
-        radio2.name = "curve";
-        this.radioCurve2 = radio2;
-        label2.appendChild(radio2);
-        var radio3 = document.createElement("input");
-        radio3.id = "radio3";
-        radio3.type = "radio";
-        radio3.className = "radio";
-        radio3.name = "curve";
-        this.radioCurve3 = radio3;
-        label3.appendChild(radio3);
-        var radio4 = document.createElement("input");
-        radio4.id = "radio4";
-        radio4.type = "radio";
-        radio4.className = "radio";
-        radio4.name = "curve";
-        this.radioCurve4 = radio4;
-        label4.appendChild(radio4);
-        radioCurveContainer.appendChild(label1);
-        radioCurveContainer.appendChild(label2);
-        radioCurveContainer.appendChild(label3);
-        radioCurveContainer.appendChild(label4);
-        // radio Axis
-        var radioAxisContainer = document.createElement("form");
-        radioAxisContainer.id = "radioAxisContainer";
-        this.radioAxisContainer = radioAxisContainer;
-        var label0 = document.createElement("label");
-        label0.className = "axe";
-        label0.id = "axe0";
-        label0.textContent = Utilitary.messageRessource.axis0;
-        var labelX = document.createElement("label");
-        labelX.className = "axe";
-        labelX.id = "axeX";
-        labelX.textContent = Utilitary.messageRessource.axisX;
-        var labelY = document.createElement("label");
-        labelY.className = "axe";
-        labelY.id = "axeY";
-        labelY.textContent = Utilitary.messageRessource.axisY;
-        var labelZ = document.createElement("label");
-        labelZ.className = "axe";
-        labelZ.id = "axeZ";
-        labelZ.textContent = Utilitary.messageRessource.axisZ;
-        var radio0 = document.createElement("input");
-        radio0.id = "radio0";
-        radio0.type = "checkbox";
-        radio0.className = "radio";
-        radio0.name = "axis";
-        this.radioAxis0 = radio0;
-        label0.appendChild(radio0);
-        var radioX = document.createElement("input");
-        radioX.id = "radioX";
-        radioX.type = "radio";
-        radioX.className = "radio";
-        radioX.name = "axis";
-        this.radioAxisX = radioX;
-        labelX.appendChild(radioX);
-        var radioY = document.createElement("input");
-        radioY.id = "radioY";
-        radioY.type = "radio";
-        radioY.className = "radio";
-        radioY.name = "axis";
-        this.radioAxisY = radioY;
-        labelY.appendChild(radioY);
-        var radioZ = document.createElement("input");
-        radioZ.id = "radioZ";
-        radioZ.type = "radio";
-        radioZ.className = "radio";
-        radioZ.name = "axis";
-        this.radioAxisZ = radioZ;
-        labelZ.appendChild(radioZ);
-        radioAxisContainer.appendChild(label0);
-        radioAxisContainer.appendChild(labelX);
-        radioAxisContainer.appendChild(labelY);
-        radioAxisContainer.appendChild(labelZ);
-        // checkbox On/Off accelerometer
-        var checkOnOffContainer = document.createElement("form");
-        checkOnOffContainer.id = "checkOnOffContainer";
-        this.checkeOnOffContainer = checkOnOffContainer;
-        var checkOnOffLabel = document.createElement("label");
-        checkOnOffLabel.id = "checkOnOffLabel";
-        checkOnOffLabel.textContent = Utilitary.messageRessource.checkBox;
-        checkOnOffContainer.appendChild(checkOnOffLabel);
-        var checkOnOff = document.createElement("input");
-        checkOnOff.type = "checkbox";
-        checkOnOff.id = "checkOnOff";
-        this.checkeOnOff = checkOnOff;
-        checkOnOffLabel.appendChild(checkOnOff);
-        checkOnOffLabel;
-        // Clone
-        var cloneContainer = document.createElement("div");
-        cloneContainer.id = "cloneContainer";
-        this.cloneContainer = cloneContainer;
-        //Mapping ranges
-        var accRangeMax = document.createElement("input");
-        accRangeMax.id = "accRangeMax";
-        accRangeMax.className = "accRange";
-        accRangeMax.type = "range";
-        this.rangeMax = accRangeMax;
-        var accRangeMid = document.createElement("input");
-        accRangeMid.id = "accRangeMid";
-        accRangeMid.className = "accRange";
-        accRangeMid.type = "range";
-        this.rangeMid = accRangeMid;
-        var accRangeMin = document.createElement("input");
-        accRangeMin.id = "accRangeMin";
-        accRangeMin.className = "accRange";
-        accRangeMin.type = "range";
-        this.rangeMin = accRangeMin;
-        var accRangeCurrent = document.createElement("input");
-        accRangeCurrent.id = "accRangeCurrent";
-        accRangeCurrent.className = "accRange acc";
-        accRangeCurrent.type = "range";
-        accRangeCurrent.disabled = true;
-        this.rangeCurrent = accRangeCurrent;
-        var accRangeVirtual = document.createElement("input");
-        accRangeVirtual.id = "accRangeVirtual";
-        accRangeVirtual.className = "accRange acc";
-        accRangeVirtual.type = "range";
-        this.rangeVirtual = accRangeVirtual;
-        var rangeContainer = document.createElement("div");
-        rangeContainer.id = "rangeContainer";
-        this.rangeContainer = rangeContainer;
-        rangeContainer.appendChild(accRangeMin);
-        rangeContainer.appendChild(accRangeMid);
-        rangeContainer.appendChild(accRangeMax);
-        rangeContainer.appendChild(accRangeCurrent);
-        rangeContainer.appendChild(accRangeVirtual);
-        //Validation cancelation buttons
-        var validContainer = document.createElement("div");
-        validContainer.id = "validContainer";
-        var validButton = document.createElement("button");
-        validButton.id = "validButton";
-        validButton.className = "accButton";
-        this.validButton = validButton;
-        var cancelButton = document.createElement("button");
-        cancelButton.id = "cancelButton";
-        cancelButton.className = "accButton";
-        this.cancelButton = cancelButton;
-        validContainer.appendChild(cancelButton);
-        validContainer.appendChild(validButton);
-        container.appendChild(radioCurveContainer);
-        container.appendChild(radioAxisContainer);
-        container.appendChild(checkOnOffContainer);
-        container.appendChild(cloneContainer);
-        container.appendChild(rangeContainer);
-        container.appendChild(validContainer);
-        blockLayer.appendChild(container);
-        return blockLayer;
-    }
-}
-//AccelerometerEdit
-/// <reference path="../Accelerometer.ts"/>
-/// <reference path="AccelerometerEditView.ts"/>
-class AccelerometerEdit {
-    constructor(accelerometerEditView) {
-        this.isOn = false;
-        this.accelerometerEditView = accelerometerEditView;
-        this.eventEditHandler = (event, faustIControler) => { this.editEvent(faustIControler, event); };
-        this.accelerometerEditView.cancelButton.addEventListener("click", () => { this.cancelAccelerometerEdit(); });
-        this.accelerometerEditView.validButton.addEventListener("click", () => { this.applyAccelerometerEdit(); });
-        this.accelerometerEditView.radioAxisX.addEventListener("change", (event) => { this.radioAxisSplit(event); });
-        this.accelerometerEditView.radioAxisY.addEventListener("change", (event) => { this.radioAxisSplit(event); });
-        this.accelerometerEditView.radioAxisZ.addEventListener("change", (event) => { this.radioAxisSplit(event); });
-        this.accelerometerEditView.radioAxis0.addEventListener("change", (event) => { this.disablerEnablerAcc(event); });
-        this.accelerometerEditView.radioCurve1.addEventListener("change", (event) => { this.radioCurveSplit(event); });
-        this.accelerometerEditView.radioCurve2.addEventListener("change", (event) => { this.radioCurveSplit(event); });
-        this.accelerometerEditView.radioCurve3.addEventListener("change", (event) => { this.radioCurveSplit(event); });
-        this.accelerometerEditView.radioCurve4.addEventListener("change", (event) => { this.radioCurveSplit(event); });
-        this.accelerometerEditView.checkeOnOff.addEventListener("change", (event) => { this.accelerometerEventSwitch(event); });
-        this.accelerometerEditView.rangeVirtual.addEventListener("input", (event) => { this.virtualAccelerometer(event); });
-        this.accelerometerEditView.rangeMin.addEventListener("input", (event) => { this.accMin(); });
-        this.accelerometerEditView.rangeMid.addEventListener("input", (event) => { this.accMid(); });
-        this.accelerometerEditView.rangeMax.addEventListener("input", (event) => { this.accMax(); });
-    }
-    //function used when starting or stoping editing mode
-    //setting sider with event to edit it
-    editAction() {
-        if (this.isOn) {
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var currentIFControler = AccelerometerHandler.faustInterfaceControler[i];
-                if (currentIFControler.faustInterfaceView.group) {
-                    currentIFControler.faustInterfaceView.group.removeEventListener("click", currentIFControler.callbackEdit, true);
-                    currentIFControler.faustInterfaceView.group.removeEventListener("touchstart", currentIFControler.callbackEdit, true);
-                    currentIFControler.faustInterfaceView.group.classList.remove('editControl');
-                    currentIFControler.faustInterfaceView.slider.classList.remove('edit');
-                }
-                this.setSliderDisableValue(currentIFControler);
-            }
-            this.isOn = false;
-            Utilitary.isAccelerometerEditOn = false;
-        }
-        else {
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var currentIFControler = AccelerometerHandler.faustInterfaceControler[i];
-                if (currentIFControler.faustInterfaceView.group) {
-                    currentIFControler.callbackEdit = this.editEvent.bind(this, currentIFControler);
-                    currentIFControler.faustInterfaceView.group.addEventListener("click", currentIFControler.callbackEdit, true);
-                    currentIFControler.faustInterfaceView.group.addEventListener("touchstart", currentIFControler.callbackEdit, true);
-                    currentIFControler.faustInterfaceView.group.classList.add('editControl');
-                    currentIFControler.faustInterfaceView.slider.classList.add('edit');
-                    currentIFControler.faustInterfaceView.slider.disabled = true;
-                }
-            }
-            this.isOn = true;
-            Utilitary.isAccelerometerEditOn = true;
-        }
-    }
-    //set the slider to disable or enable according to acc isActive and isDisable
-    setSliderDisableValue(faustIControler) {
-        var acc = faustIControler.accelerometerSlider;
-        var slider = faustIControler.faustInterfaceView.slider;
-        if (slider) {
-            if (acc.isActive && acc.isEnabled) {
-                slider.disabled = true;
-            }
-            else if (!acc.isActive && acc.isEnabled) {
-                slider.disabled = false;
-            }
-            else {
-                slider.disabled = false;
-            }
-        }
-    }
-    //event handler when click/touch slider in edit mode
-    editEvent(faustIControler, event) {
-        event.stopPropagation();
-        event.preventDefault();
-        var acc = faustIControler.accelerometerSlider;
-        // storing FaustInterfaceControler objects and its values
-        this.faustIControler = faustIControler;
-        this.accSlid = faustIControler.accelerometerSlider;
-        this.faustView = faustIControler.faustInterfaceView;
-        this.storeAccelerometerSliderInfos(faustIControler);
-        //placing element and attaching an event when resizing window to replace element
-        this.windowResizeEvent = this.placeElement.bind(this);
-        window.addEventListener("resize", this.windowResizeEvent);
-        this.placeElement();
-        //setting the accelerometer controlers
-        this.selectDefaultAxis(acc);
-        this.selectDefaultCurve(acc);
-        this.accelerometerEditView.checkeOnOff.checked = acc.isActive;
-        this.applyRangeMinValues(acc);
-        this.applyRangeMidValues(acc);
-        this.applyRangeMaxValues(acc);
-        this.applyRangeVirtualValues(acc);
-        this.copyParamsAccSlider(acc);
-        this.applyRangeCurrentValues(acc);
-        //cloning the slider edited to preview it
-        this.addCloneSlider(faustIControler);
-        // enable or disable acc
-        this.applyAccEnableDisable(acc);
-    }
-    //cloning the slider edited to preview it
-    addCloneSlider(faustIControler) {
-        var faustView = faustIControler.faustInterfaceView;
-        //storing original slider and output element
-        this.originalSlider = faustView.slider;
-        this.originalValueOutput = faustView.output;
-        //cloning and creating elements
-        this.currentParentElemSliderClone = faustView.group.cloneNode(true);
-        var title = document.createElement("h6");
-        title.textContent = faustIControler.name;
-        this.accelerometerEditView.container.insertBefore(title, this.accelerometerEditView.radioCurveContainer);
-        this.accelerometerEditView.cloneContainer.appendChild(this.currentParentElemSliderClone);
-        faustView.slider = this.currentParentElemSliderClone.getElementsByTagName("input")[0];
-        faustView.output = this.currentParentElemSliderClone.getElementsByClassName("value")[0];
-        this.accelerometerSwitch(faustIControler.accelerometerSlider.isActive);
-    }
-    //remove clone/preview slider
-    removeCloneSlider(faustIControler) {
-        var faustView = faustIControler.faustInterfaceView;
-        this.accelerometerEditView.cloneContainer.removeChild(this.accelerometerEditView.cloneContainer.getElementsByTagName("div")[0]);
-        faustView.slider = this.originalSlider;
-        faustView.output = this.originalValueOutput;
-        this.accelerometerEditView.container.getElementsByTagName("h6")[0].remove();
-    }
-    //cancel editing mode, and not applying changes
-    cancelAccelerometerEdit() {
-        //reset original values
-        this.accSlid.setAttributes(this.originalAccValue);
-        this.accSlid.init = this.originalDefaultVal;
-        this.accSlid.callbackValueChange(this.accSlid.address, this.accSlid.init);
-        this.faustIControler.faustInterfaceView.slider.value = this.originalDefaultSliderVal;
-        this.accelerometerEditView.rangeContainer.className = "";
-        this.accelerometerSwitch(this.originalActive);
-        this.faustIControler.faustInterfaceView.output.textContent = this.accSlid.init.toString();
-        AccelerometerHandler.curveSplitter(this.accSlid);
-        this.removeCloneSlider(this.faustIControler);
-        this.accSlid.isEnabled = this.originalEnabled;
-        this.applyDisableEnableAcc();
-        //hide editing interface
-        this.accelerometerEditView.blockLayer.style.display = "none";
-        window.removeEventListener("resize", this.windowResizeEvent);
-    }
-    applyAccelerometerEdit() {
-        this.removeCloneSlider(this.faustIControler);
-        //applying new axis style to slider
-        this.faustView.group.classList.remove(this.originalAxis);
-        this.faustView.group.classList.add(Axis[this.accSlid.axis]);
-        //hide editing interface
-        this.accelerometerEditView.blockLayer.style.display = "none";
-        window.removeEventListener("resize", this.windowResizeEvent);
-        //concatanate new acc string value
-        this.accSlid.acc = this.accSlid.axis + " " + this.accSlid.curve + " " + this.accSlid.amin + " " + this.accSlid.amid + " " + this.accSlid.amax;
-        this.accelerometerEditView.rangeContainer.className = "";
-        //applying new allowed style to slider
-        this.faustView.slider.classList.remove(this.originalSliderAllowedStyle);
-        this.faustView.slider.classList.add(this.sliderAllowedStyle);
-        //apply new click and touch event to controler
-        this.faustView.group.removeEventListener("click", this.faustIControler.callbackEdit, true);
-        this.faustView.group.removeEventListener("touchstart", this.faustIControler.callbackEdit, true);
-        this.faustIControler.callbackEdit = this.editEvent.bind(this, this.faustIControler);
-        this.faustView.group.addEventListener("click", this.faustIControler.callbackEdit, true);
-        this.faustView.group.addEventListener("touchstart", this.faustIControler.callbackEdit, true);
-        //check if something has change if yes, save values into faust code
-        if (this.originalAccValue != this.accSlid.acc || this.originalEnabled != this.accSlid.isEnabled) {
-            var detail = { sliderName: this.accSlid.label, newAccValue: this.accSlid.acc, isEnabled: this.accSlid.isEnabled };
-            this.faustIControler.updateFaustCodeCallback(detail);
-        }
-        this.applyDisableEnableAcc();
-    }
-    //disable or enable slider according to isActive and isEnable
-    applyDisableEnableAcc() {
-        if (this.accSlid.isEnabled) {
-            this.faustView.group.classList.remove("disabledAcc");
-            if (this.accSlid.isActive) {
-                this.faustView.slider.classList.add("not-allowed");
-                this.faustView.slider.classList.remove("allowed");
-                this.faustView.slider.disabled = true;
-            }
-            else {
-                this.faustView.slider.classList.remove("not-allowed");
-                this.faustView.slider.classList.add("allowed");
-                this.faustView.slider.disabled = false;
-            }
-        }
-        else {
-            this.faustView.group.classList.add("disabledAcc");
-            this.faustView.slider.classList.remove("not-allowed");
-            this.faustView.slider.classList.add("allowed");
-            this.faustView.slider.disabled = false;
-        }
-    }
-    //Place graphical element of the editing view
-    placeElement() {
-        this.accelerometerEditView.blockLayer.style.display = "block";
-        this.accelerometerEditView.blockLayer.style.height = window.innerHeight + "px";
-        this.accelerometerEditView.rangeContainer.style.top = window.innerHeight / 1.8 + "px";
-        this.accelerometerEditView.cloneContainer.style.top = window.innerHeight / 7 + "px";
-        this.accelerometerEditView.checkeOnOffContainer.style.top = window.innerHeight / 8 + "px";
-        this.accelerometerEditView.radioAxisContainer.style.top = window.innerHeight / 12 + "px";
-        this.accelerometerEditView.radioCurveContainer.style.top = window.innerHeight / 25 + "px";
-    }
-    //store original values of the controller being edited
-    storeAccelerometerSliderInfos(faustIControler) {
-        var acc = faustIControler.accelerometerSlider;
-        this.originalAxis = Axis[acc.axis];
-        this.originalAccValue = acc.acc;
-        this.originalActive = acc.isActive;
-        this.originalEnabled = acc.isEnabled;
-        this.originalDefaultVal = acc.init;
-        this.originalDefaultSliderVal = faustIControler.faustInterfaceView.slider.value;
-        if (acc.isActive) {
-            this.originalSliderAllowedStyle = "not-allowed";
-        }
-        else {
-            this.originalSliderAllowedStyle = "allowed";
-        }
-    }
-    //check or uncheck the checkbox for enabling/disabling the acc on the app
-    applyAccEnableDisable(accSlider) {
-        if (accSlider.isEnabled) {
-            this.accelerometerEditView.radioAxis0.checked = false;
-        }
-        else {
-            this.accelerometerEditView.radioAxis0.checked = true;
-        }
-    }
-    //check or uncheck the checkbox for enabling/disabling the acc on the app and faust code
-    //applying styling accordingly
-    disablerEnablerAcc(e) {
-        if (this.accSlid.isEnabled) {
-            this.accSlid.isEnabled = false;
-            this.accelerometerEditView.cloneContainer.getElementsByTagName("div")[0].classList.add("disabledAcc");
-            this.faustView.group.classList.add("disabledAcc");
-            this.accelerometerEditView.rangeContainer.classList.add("disabledAcc");
-        }
-        else {
-            this.accSlid.isEnabled = true;
-            this.accelerometerEditView.cloneContainer.getElementsByTagName("div")[0].classList.remove("disabledAcc");
-            this.faustView.group.classList.remove("disabledAcc");
-            this.accelerometerEditView.rangeContainer.classList.remove("disabledAcc");
-        }
-    }
-    //set curve to the good radio button curve
-    selectDefaultCurve(accSlider) {
-        switch (accSlider.curve) {
-            case Curve.Up:
-                this.accelerometerEditView.radioCurve1.checked = true;
-                break;
-            case Curve.Down:
-                this.accelerometerEditView.radioCurve2.checked = true;
-                break;
-            case Curve.UpDown:
-                this.accelerometerEditView.radioCurve3.checked = true;
-                break;
-            case Curve.DownUp:
-                this.accelerometerEditView.radioCurve4.checked = true;
-                break;
-            default:
-                this.accelerometerEditView.radioCurve1.checked = true;
-                break;
-        }
-    }
-    //set axis to the good radio button axis
-    selectDefaultAxis(accSlider) {
-        switch (accSlider.axis) {
-            case Axis.x:
-                this.accelerometerEditView.radioAxisX.checked = true;
-                break;
-            case Axis.y:
-                this.accelerometerEditView.radioAxisY.checked = true;
-                break;
-            case Axis.z:
-                this.accelerometerEditView.radioAxisZ.checked = true;
-                break;
-        }
-    }
-    //set values to the minimum acc range
-    applyRangeMinValues(accSlider) {
-        this.accelerometerEditView.rangeMin.min = "-20";
-        this.accelerometerEditView.rangeMin.max = "20";
-        this.accelerometerEditView.rangeMin.step = "0.1";
-        this.accelerometerEditView.rangeMin.value = String(accSlider.amin);
-    }
-    //set values to the middle acc range
-    applyRangeMidValues(accSlider) {
-        this.accelerometerEditView.rangeMid.min = "-20";
-        this.accelerometerEditView.rangeMid.max = "20";
-        this.accelerometerEditView.rangeMid.step = "0.1";
-        this.accelerometerEditView.rangeMid.value = String(accSlider.amid);
-    }
-    //set values to the maximum acc range
-    applyRangeMaxValues(accSlider) {
-        this.accelerometerEditView.rangeMax.min = "-20";
-        this.accelerometerEditView.rangeMax.max = "20";
-        this.accelerometerEditView.rangeMax.step = "0.1";
-        this.accelerometerEditView.rangeMax.value = String(accSlider.amax);
-    }
-    //set values to the virtual range
-    applyRangeVirtualValues(accSlider) {
-        this.accelerometerEditView.rangeVirtual.min = "-20";
-        this.accelerometerEditView.rangeVirtual.max = "20";
-        this.accelerometerEditView.rangeVirtual.value = "0";
-        this.accelerometerEditView.rangeVirtual.step = "0.1";
-    }
-    //set values to the accelerometer range
-    //create a faustInterfaceControler and register it to the AccelerometerHandler
-    applyRangeCurrentValues(accSlider) {
-        this.accelerometerEditView.rangeCurrent.min = "-20";
-        this.accelerometerEditView.rangeCurrent.max = "20";
-        this.accelerometerEditView.rangeCurrent.value = "0";
-        this.accelerometerEditView.rangeCurrent.step = "0.1";
-        this.accParams.isEnabled = accSlider.isEnabled;
-        var faustInterfaceControlerEdit = new FaustInterfaceControler(null, null);
-        faustInterfaceControlerEdit.faustInterfaceView = new FaustInterfaceView("edit");
-        AccelerometerHandler.registerAcceleratedSlider(this.accParams, faustInterfaceControlerEdit, true);
-        var acc = faustInterfaceControlerEdit.accelerometerSlider;
-        faustInterfaceControlerEdit.faustInterfaceView.slider = this.accelerometerEditView.rangeCurrent;
-        faustInterfaceControlerEdit.faustInterfaceView.slider.parentElement.classList.add(Axis[acc.axis]);
-        acc.isActive = true;
-    }
-    //copy params of the accSlider
-    copyParamsAccSlider(accSlider) {
-        this.accParams = {
-            isEnabled: accSlider.isEnabled,
-            acc: accSlider.acc,
-            address: accSlider.address,
-            min: accSlider.min,
-            max: accSlider.max,
-            init: accSlider.init,
-            label: accSlider.label
-        };
-    }
-    // split edited acc axis according the radio axis selection
-    radioAxisSplit(event) {
-        console.log("change");
-        var radio = event.target;
-        if (radio.id == "radioX") {
-            this.editAxis(Axis.x);
-        }
-        else if (radio.id == "radioY") {
-            this.editAxis(Axis.y);
-        }
-        else if (radio.id == "radioZ") {
-            this.editAxis(Axis.z);
-        }
-    }
-    // split edited acc curve according the radio curve selection
-    radioCurveSplit(event) {
-        console.log("change");
-        var radio = event.target;
-        if (radio.id == "radio1") {
-            this.editCurve(Curve.Up);
-        }
-        else if (radio.id == "radio2") {
-            this.editCurve(Curve.Down);
-        }
-        else if (radio.id == "radio3") {
-            this.editCurve(Curve.UpDown);
-        }
-        else if (radio.id == "radio4") {
-            this.editCurve(Curve.DownUp);
-        }
-    }
-    //apply new axis value the the AccelerometerSlider
-    editAxis(axe) {
-        this.accelerometerEditView.cloneContainer.getElementsByTagName("div")[0].classList.remove(Axis[this.accSlid.axis]);
-        this.accelerometerEditView.cloneContainer.getElementsByTagName("div")[0].classList.add(Axis[axe]);
-        var oldAxis = this.accSlid.axis;
-        this.accSlid.axis = axe;
-        var editAcc = AccelerometerHandler.faustInterfaceControlerEdit.accelerometerSlider;
-        var faustView = AccelerometerHandler.faustInterfaceControlerEdit.faustInterfaceView;
-        editAcc.axis = axe;
-        faustView.slider.parentElement.classList.remove(Axis[oldAxis]);
-        faustView.slider.parentElement.classList.add(Axis[editAcc.axis]);
-    }
-    //apply new curve value the the AccelerometerSlider
-    editCurve(curve) {
-        this.accSlid.curve = curve;
-        var editAcc = AccelerometerHandler.faustInterfaceControlerEdit.accelerometerSlider;
-        editAcc.curve = curve;
-        AccelerometerHandler.curveSplitter(this.accSlid);
-        this.applyValuetoFaust();
-    }
-    //event handler to switch isActive
-    accelerometerEventSwitch(event) {
-        this.accelerometerSwitch(this.accelerometerEditView.checkeOnOff.checked);
-    }
-    //change isActive of AccelerometerSlider
-    accelerometerSwitch(isSliderActive) {
-        if (isSliderActive) {
-            this.accSlid.isActive = isSliderActive;
-            if (this.accSlid.isEnabled) {
-                this.sliderAllowedStyle = "not-allowed";
-            }
-            else {
-                this.sliderAllowedStyle = "allowed";
-            }
-        }
-        else {
-            this.sliderAllowedStyle = "allowed";
-            this.accSlid.isActive = isSliderActive;
-        }
-    }
-    //apply value of virtual Accelerometer when it's use//
-    //disable acc if enabled
-    virtualAccelerometer(event) {
-        if (this.accelerometerEditView.checkeOnOff.checked == true) {
-            this.accelerometerEditView.checkeOnOff.checked = false;
-            this.accelerometerSwitch(false);
-            this.accSlid.isActive = false;
-        }
-        this.applyValuetoFaust();
-    }
-    //apply change to AccelerometerSlider from min slider
-    accMin() {
-        this.accSlid.amin = parseFloat(this.accelerometerEditView.rangeMin.value);
-        this.accSlid.converter.setMappingValues(this.accSlid.amin, this.accSlid.amid, this.accSlid.amax, this.accSlid.min, this.accSlid.init, this.accSlid.max);
-        this.applyValuetoFaust();
-    }
-    //apply change to AccelerometerSlider from mid slider
-    accMid() {
-        this.accSlid.amid = parseFloat(this.accelerometerEditView.rangeMid.value);
-        this.accSlid.converter.setMappingValues(this.accSlid.amin, this.accSlid.amid, this.accSlid.amax, this.accSlid.min, this.accSlid.init, this.accSlid.max);
-        this.applyValuetoFaust();
-    }
-    //apply change to AccelerometerSlider from max slider
-    accMax() {
-        this.accSlid.amax = parseFloat(this.accelerometerEditView.rangeMax.value);
-        this.accSlid.converter.setMappingValues(this.accSlid.amin, this.accSlid.amid, this.accSlid.amax, this.accSlid.min, this.accSlid.init, this.accSlid.max);
-        this.applyValuetoFaust();
-    }
-    //apply values changes to the AccelerometerSlider
-    applyValuetoFaust() {
-        var rangeVal = parseFloat(this.accelerometerEditView.rangeVirtual.value);
-        Utilitary.accHandler.axisSplitter(this.accSlid, rangeVal, rangeVal, rangeVal, Utilitary.accHandler.applyNewValueToModule);
-    }
-}
 //Menu.ts  Menu class which handles the menu behaviours and contains the MenuView
 /// <reference path="Library.ts"/>
 /// <reference path="LibraryView.ts"/>
@@ -6623,7 +5645,6 @@ class AccelerometerEdit {
 /// <reference path="HelpView.ts"/>
 /// <reference path="Load.ts"/>
 /// <reference path="Save.ts"/>
-/// <reference path="AccelerometerEdit.ts"/>
 /// <reference path="../DriveAPI.ts"/>
 /// <reference path="../Messages.ts"/>
 var MenuChoices;
@@ -6642,7 +5663,6 @@ class Menu {
         this.isMenuDriveLoading = false;
         this.currentMenuChoices = MenuChoices.null;
         this.isFullScreen = false;
-        this.isAccelerometer = Utilitary.isAccelerometerOn;
         //create and init menu view wich gone create and init all sub menus views
         this.menuView = new MenuView();
         this.menuView.init(htmlContainer);
@@ -6655,7 +5675,6 @@ class Menu {
         this.menuView.saveButton.addEventListener("click", () => { this.menuHandler(this.newMenuChoices = MenuChoices.save); });
         this.menuView.loadButton.addEventListener("click", () => { this.menuHandler(this.newMenuChoices = MenuChoices.load); });
         this.menuView.fullScreenButton.addEventListener("click", () => { this.fullScreen(); });
-        this.menuView.accButton.addEventListener("click", () => { this.accelerometer(); });
         this.menuView.cleanButton.addEventListener("click", () => { new Confirm(Utilitary.messageRessource.confirmEmptyScene, (callback) => { this.cleanScene(callback); }); });
         //add eventListern customs
         document.addEventListener("updatename", (e) => { this.updatePatchNameToInput(e); });
@@ -6688,7 +5707,6 @@ class Menu {
         this.expor.setEventListeners();
         this.help = new Help();
         this.help.helpView = this.menuView.helpView;
-        this.accEdit = new AccelerometerEdit(this.menuView.accEditView);
     }
     // dispatch the action of the menu buttons to the right submenu handler
     menuHandler(newMenuChoices) {
@@ -6855,11 +5873,11 @@ class Menu {
             case MenuChoices.null:
                 this.menuView.editButtonMenu.style.backgroundColor = "#00C50D";
                 this.menuView.editButtonMenu.style.boxShadow = "yellow 0px 0px 51px inset";
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.currentMenuChoices = MenuChoices.edit;
                 break;
             case MenuChoices.edit:
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.menuView.editButtonMenu.style.backgroundColor = this.menuView.menuColorDefault;
                 this.menuView.editButtonMenu.style.boxShadow = "none";
                 this.menuView.contentsMenu.style.display = "none";
@@ -6869,7 +5887,7 @@ class Menu {
                 this.cleanMenu();
                 this.menuView.editButtonMenu.style.backgroundColor = "#00C50D";
                 this.menuView.editButtonMenu.style.boxShadow = "yellow 0px 0px 51px inset";
-                this.accEdit.editAction();
+                //this.accEdit.editAction();
                 this.menuView.contentsMenu.style.display = "none";
                 this.currentMenuChoices = MenuChoices.edit;
                 break;
@@ -6885,12 +5903,6 @@ class Menu {
     }
     //hide all elements currently displayed in the menu
     cleanMenu() {
-        if (this.accEdit.isOn) {
-            this.accEdit.editAction();
-            this.menuView.editButtonMenu.style.backgroundColor = this.menuView.menuColorDefault;
-            this.menuView.editButtonMenu.style.boxShadow = "none";
-            this.menuView.contentsMenu.style.display = "block";
-        }
         for (var i = 0; i < this.menuView.HTMLElementsMenu.length; i++) {
             this.menuView.HTMLElementsMenu[i].style.display = "none";
         }
@@ -6935,41 +5947,6 @@ class Menu {
                 document.documentElement.mozRequestFullScreen();
             }
             this.isFullScreen = true;
-        }
-    }
-    //handle the enabing/disabling of all slider having a accelerometer
-    accelerometer() {
-        if (this.isAccelerometer) {
-            this.isAccelerometer = false;
-            Utilitary.isAccelerometerOn = false;
-            this.menuView.accButton.style.opacity = "0.3";
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var acc = AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider;
-                var slider = AccelerometerHandler.faustInterfaceControler[i].faustInterfaceView.slider;
-                acc.isActive = false;
-                slider.classList.remove("not-allowed");
-                slider.classList.add("allowed");
-                if (!Utilitary.isAccelerometerEditOn) {
-                    slider.disabled = false;
-                }
-            }
-        }
-        else if (!this.isAccelerometer) {
-            this.isAccelerometer = true;
-            Utilitary.isAccelerometerOn = true;
-            this.menuView.accButton.style.opacity = "1";
-            for (var i = 0; i < AccelerometerHandler.faustInterfaceControler.length; i++) {
-                var acc = AccelerometerHandler.faustInterfaceControler[i].accelerometerSlider;
-                var slider = AccelerometerHandler.faustInterfaceControler[i].faustInterfaceView.slider;
-                if (acc.isEnabled) {
-                    acc.isActive = true;
-                    slider.classList.add("not-allowed");
-                    slider.classList.remove("allowed");
-                    if (!Utilitary.isAccelerometerEditOn) {
-                        slider.disabled = true;
-                    }
-                }
-            }
         }
     }
     //removing all modules from the scene
@@ -7094,8 +6071,6 @@ class Menu {
     }
 }
 //MenuView.ts : MenuView Class which contains all the graphical parts of the menu
-/// <reference path="../Accelerometer.ts"/>
-/// <reference path="AccelerometerEditView.ts"/>
 /// <reference path="LoadView.ts"/>
 /// <reference path="SaveView.ts"/>
 class MenuView {
@@ -7154,9 +6129,6 @@ class MenuView {
         cleanButton.id = "cleanButton";
         cleanButton.className = "buttonsLittleMenu";
         this.cleanButton = cleanButton;
-        if (!Utilitary.isAccelerometerOn) {
-            accButton.style.opacity = "0.2";
-        }
         buttonsMenu.appendChild(libraryButtonMenu);
         buttonsMenu.appendChild(loadButtonMenu);
         buttonsMenu.appendChild(editButtonMenu);
@@ -7203,10 +6175,6 @@ class MenuView {
         var helpContent = helpView.initHelpView();
         helpContent.style.display = "none";
         this.helpView = helpView;
-        var accEditView = new AccelerometerEditView();
-        var accEditContent = accEditView.initAccelerometerEdit();
-        accEditContent.style.display = "none";
-        this.accEditView = accEditView;
         contentsMenu.appendChild(CloseButtonContainer);
         contentsMenu.appendChild(libraryContent);
         contentsMenu.appendChild(loadContent);
@@ -7215,7 +6183,6 @@ class MenuView {
         contentsMenu.appendChild(helpContent);
         menuContainer.appendChild(buttonsMenu);
         menuContainer.appendChild(contentsMenu);
-        menuContainer.appendChild(accEditContent);
         htmlContainer.appendChild(menuContainer);
         this.HTMLElementsMenu.push(libraryContent, loadContent, saveContent, exportContent, helpContent);
         this.libraryContent = libraryContent;
@@ -7278,16 +6245,12 @@ class App {
         this.menu.setMenuScene(Utilitary.currentScene);
         //add eventlistener on the scene to hide menu when clicked or touched
         Utilitary.currentScene.getSceneContainer().addEventListener("mousedown", () => {
-            if (!this.menu.accEdit.isOn) {
-                this.menu.newMenuChoices = MenuChoices.null;
-                this.menu.menuHandler(this.menu.newMenuChoices);
-            }
+            this.menu.newMenuChoices = MenuChoices.null;
+            this.menu.menuHandler(this.menu.newMenuChoices);
         }, true);
         Utilitary.currentScene.getSceneContainer().addEventListener("touchstart", () => {
-            if (!this.menu.accEdit.isOn) {
-                this.menu.newMenuChoices = MenuChoices.null;
-                this.menu.menuHandler(this.menu.newMenuChoices);
-            }
+            this.menu.newMenuChoices = MenuChoices.null;
+            this.menu.menuHandler(this.menu.newMenuChoices);
         }, true);
     }
     //create div to append messages and confirms
@@ -7299,12 +6262,12 @@ class App {
     /********************************************************************
     ****************  CREATE FAUST FACTORIES AND MODULES ****************
     ********************************************************************/
-    compileFaust(compileFaust) {
+    compileFaust(compileFaustParameters) {
         //  Temporarily Saving parameters of compilation
-        this.tempModuleName = compileFaust.name;
-        this.tempModuleSourceCode = compileFaust.sourceCode;
-        this.tempModuleX = compileFaust.x;
-        this.tempModuleY = compileFaust.y;
+        this.tempModuleName = compileFaustParameters.name;
+        this.tempModuleSourceCode = compileFaustParameters.sourceCode;
+        this.tempModuleX = compileFaustParameters.x;
+        this.tempModuleY = compileFaustParameters.y;
         var currentScene = Utilitary.currentScene;
         if (currentScene) {
             currentScene.muteScene();
@@ -7313,21 +6276,21 @@ class App {
         //locate libraries used in libfaust compiler
         var libpath = location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/')) + "/faustlibraries/";
         var args = ["-I", libpath, "-ftz", "2"];
-        console.log("trying to compile file" + compileFaust);
+        console.log("trying to compile file" + compileFaustParameters);
         //try to create the wasm code/factory with the given Faust code. Then callback to function passing the factory.
         //check if it's an
         try {
             //todo make poly work
-            if (compileFaust.isMidi) {
-                this.factory = faust.createPolyDSPFactory(compileFaust.sourceCode, args, (factory) => {
+            if (compileFaustParameters.isMidi) {
+                this.factory = faust.createPolyDSPFactory(compileFaustParameters.sourceCode, args, (factory) => {
                     factory.isMidi = true;
-                    compileFaust.callback(factory);
+                    compileFaustParameters.callback(factory);
                 });
             }
             else {
-                this.factory = faust.createDSPFactory(compileFaust.sourceCode, args, (factory) => {
+                this.factory = faust.createDSPFactory(compileFaustParameters.sourceCode, args, (factory) => {
                     factory.isMidi = false;
-                    compileFaust.callback(factory);
+                    compileFaustParameters.callback(factory);
                 });
             }
         }
@@ -7450,7 +6413,8 @@ class App {
             }
         }
         else if (moduleJson.moduleType === "CompositionModule") {
-            let module = new CompositionModule(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); }, moduleJson, (module) => {
+            //create new module
+            new CompositionModule(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); }, moduleJson, (module) => {
                 module.setFaustInterfaceControles();
                 module.createFaustInterface();
                 module.addInputOutputNodes();
@@ -7760,9 +6724,6 @@ function resumeInit(app) {
     Utilitary.addFullPageLoading();
     app.createAllScenes();
     app.createMenu();
-    var accHandler = new AccelerometerHandler();
-    Utilitary.accHandler = accHandler;
-    accHandler.getAccelerometerValue();
     Utilitary.driveApi = new DriveAPI();
     app.menu.setDriveApi(Utilitary.driveApi);
     Utilitary.driveApi.checkAuth();

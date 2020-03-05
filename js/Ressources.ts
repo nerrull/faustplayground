@@ -83,7 +83,6 @@ class Ressources {
     invalidSceneName: string;
     successRenameScene: string;
 
-    //AccelerometerEditView
     curve1: string;
     curve2: string;
     curve3: string;

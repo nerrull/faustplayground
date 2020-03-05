@@ -38,7 +38,7 @@ class EquivalentFaust {
 
     giveIdToModules(scene: Scene):void {
 
-        var modules: ModuleClass[] = scene.getModules();
+        var modules: GraphicalModule[] = scene.getModules();
 
         for (var i = 0; i < modules.length; i++) {
             modules[i].patchID = String(i + 1);
@@ -181,7 +181,7 @@ class EquivalentFaust {
     //Calculate Faust Equivalent of the Scene
     getFaustEquivalent(scene: Scene, patchName: string): string {
 
-        var faustModuleList:ModuleClass[]= scene.getModules();
+        var faustModuleList: GraphicalModule[]= scene.getModules();
 
         if (faustModuleList.length > 0) {
 
