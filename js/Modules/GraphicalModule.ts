@@ -11,6 +11,15 @@ HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
 /// <reference path="ModuleFaust.ts"/>
 /// <reference path="ModuleView.ts"/>
 
+
+enum ModuleType {
+    Abstract = 1,
+    FaustDSP,
+    FaustDSP_MIDI,
+    MidiController,
+    SamplePlayer,
+}
+
 interface DSPCallback 	{ (): void; }
 
 class GraphicalModule  {
@@ -23,16 +32,30 @@ class GraphicalModule  {
     moduleFaust: ModuleFaust;
     moduleView: ModuleView;
     moduleControles: FaustInterfaceControler[] = [];
-    
     protected fModuleInterfaceParams: { [label: string]: string } = {};
     
     eventDraggingHandler: (event: MouseEvent) => void;
     eventConnectorHandler: (event: Event) => void;
     eventOpenEditHandler: () => void;
+
     typeString:string;
     public getType():string{
         return this.typeString;
     }
+
+    moduleType: ModuleType;
+    public getModuleType():ModuleType{
+        return this.moduleType;
+    }
+
+    jsonDesc : JSONModuleDescription;
+
+    getJSON(): JSONModuleDescription { return this.jsonDesc; }
+    setJSON(code: JSONModuleDescription): void {
+        this.jsonDesc = code;
+    }
+    
+
     constructor(id: number, x: number, y: number, name: string, htmlElementModuleContainer: HTMLElement) {
         this.eventConnectorHandler = (event: MouseEvent) => { this.dragCnxCallback(event, this) };
         this.eventOpenEditHandler = () => { this.edit() }

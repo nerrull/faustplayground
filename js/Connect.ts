@@ -28,6 +28,7 @@ class Connector {
     destination: ModuleClass;
     sourceNode:HTMLElement;
     dstNode: HTMLElement;
+    midiInstrumentID: string;
     
     // connect input node to device input
     connectInput(inputModule: ModuleClass, divSrc: IHTMLDivElementSrc): void {
@@ -44,29 +45,6 @@ class Connector {
         divSample.audioNode.connect(outMod.moduleFaust.getDSP());
     }
     
-    // Connect Nodes in Web Audio Graph
-    connectMidiModules(source: ModuleMIDIReader, destination: ModuleClass): void {
-        var destinationDSP: IfDSP;
-        if (destination != null && destination.moduleFaust.getDSP) {
-            destinationDSP = destination.moduleFaust.getDSP();
-        }
-        
-        if (destinationDSP) {
-            source.setMidiCallback((midiInfo)=> {destination.midiControl(midiInfo)})
-        }
-    }
-
-      // Connect Nodes in Web Audio Graph
-      connectMidiCompositionModule(source: CompositionModule, destination: ModuleClass, instrument_id:string): void {
-        var destinationDSP: IfDSP;
-        if (destination != null && destination.moduleFaust.getDSP) {
-            destinationDSP = destination.moduleFaust.getDSP();
-        }
-        
-        if (destinationDSP) {
-            source.addMidiCallback(instrument_id, this, (command)=> {destination.midiControl(command)})
-        }
-    }
     
     
     // Connect Nodes in Web Audio Graph
@@ -85,6 +63,49 @@ class Connector {
         }
         source.setDSPValue();
         destination.setDSPValue();
+    }
+
+    
+    // Connect Nodes in Web Audio Graph
+    connectMidiModules(source: ModuleMIDIReader, destination: ModuleClass): void {
+        var destinationDSP: IfDSP;
+        if (destination != null && destination.moduleFaust.getDSP) {
+            destinationDSP = destination.moduleFaust.getDSP();
+        }
+        
+        if (destinationDSP) {
+            source.setMidiCallback((midiInfo)=> {destination.midiControl(midiInfo)})
+        }
+    }
+
+    // Connect Comp module to instrument
+    connectMidiCompositionModule(source: CompositionModule, destination: ModuleClass, instrument_id:string): void {
+        this.midiInstrumentID = instrument_id;
+        var destinationDSP: IfDSP;
+        if (destination != null && destination.moduleFaust.getDSP) {
+            destinationDSP = destination.moduleFaust.getDSP();
+        }
+        
+        if (destinationDSP) {
+            source.addMidiCallback(instrument_id, this, (command)=> {destination.midiControl(command)})
+        }
+    }
+
+    connectModuleParameters(source: GraphicalModule, destination: GraphicalModule, srcParameterAddress: string, dstParameterAdress : string): void {
+        var srcController:FaustInterfaceControler;
+        var dstController:FaustInterfaceControler;
+        for (let i =0  ; i < source.moduleControles.length; i++){
+            let mod = source.moduleControles[i]
+            if (mod.itemParam.address == srcParameterAddress) srcController = mod;
+        }
+        
+        for (let i =0  ; i < destination.moduleControles.length; i++){
+            let mod = destination.moduleControles[i]
+            if (mod.itemParam.address == dstParameterAdress) dstController = mod;
+        }
+        if (srcController && dstController){
+            srcController.valueChangeCallbacks[dstParameterAdress] = (adress, value) => { destination.externalSetParamValue(adress, value)}
+        }
     }
     
     // Disconnect Nodes in Web Audio Graph
@@ -108,60 +129,20 @@ class Connector {
             }
         }
     }
-    
-    connectModuleParameters(source: GraphicalModule, destination: GraphicalModule, srcParameterAddress: string, dstParameterAdress : string): void {
-        var srcController:FaustInterfaceControler;
-        var dstController:FaustInterfaceControler;
-        for (let i =0  ; i < source.moduleControles.length; i++){
-            let mod = source.moduleControles[i]
-            if (mod.itemParam.address == srcParameterAddress) srcController = mod;
-        }
+
+    // Disconnect midi callback in composition module for instrument - need to store instrument in connector
+    disconnectMidiModules(source: CompositionModule, destination: ModuleClass):void {
         
-        for (let i =0  ; i < destination.moduleControles.length; i++){
-            let mod = destination.moduleControles[i]
-            if (mod.itemParam.address == dstParameterAdress) dstController = mod;
-        }
-        if (srcController && dstController){
-            srcController.valueChangeCallbacks[dstParameterAdress] = (adress, value) => { destination.externalSetParamValue(adress, value)}
-        }
-        
-        // var sourceDSP: IfDSP;
-        // var destinationDSP: IfDSP;
-        // if (destination != null && destination.moduleFaust.getDSP) {
-        //     destinationDSP = destination.moduleFaust.getDSP();
-        // }
-        // if (source.moduleFaust.getDSP) {
-        //     sourceDSP = source.moduleFaust.getDSP();
-        // }
-        
-        // if (sourceDSP && destinationDSP) {
-        //     sourceDSP.connect(destinationDSP)
-        // }
-        // source.setDSPValue();
-        // destination.setDSPValue();
+  
     }
-    
+
     // Disconnect Nodes in Web Audio Graph
     disconnectModuleParameters(source: GraphicalModule, destination: GraphicalModule):void {
-        
-        // // We want to be dealing with the audio node elements from here on
-        // var sourceCopy: ModuleClass = source;
-        // var sourceCopyDSP: IfDSP;
-        // // Searching for src/dst DSP if existing
-        
-        // if (sourceCopy != undefined && sourceCopy.moduleFaust.getDSP) {
-        //     sourceCopyDSP = sourceCopy.moduleFaust.getDSP();
-        //     sourceCopyDSP.disconnect();
-        // }
-        
-        // // Reconnect all disconnected connections (because disconnect API cannot break a single connection)
-        // if (source!=undefined&&source.moduleFaust.getOutputConnections()) {
-        //     for (var i = 0; i < source.moduleFaust.getOutputConnections().length; i++){
-        //         if (source.moduleFaust.getOutputConnections()[i].destination != destination)
-        //             this.connectModules(source, source.moduleFaust.getOutputConnections()[i].destination);
-        //     }
-        // }
+
     }
+    
+    
+
     
     /**************************************************/
     /***************** Save Connection*****************/
@@ -178,7 +159,7 @@ class Connector {
     /**************** Create/Break Connection(s) *******************/
     /***************************************************************/
     
-    createConnection(source: ModuleClass, outtarget: HTMLElement, destination: ModuleClass, intarget: HTMLElement):void {
+    createConnection(source: GraphicalModule, outtarget: HTMLElement, destination: GraphicalModule, intarget: HTMLElement):void {
         var drag: Drag = new Drag();
         drag.startDraggingConnection(source, outtarget);
         drag.stopDraggingConnection(source, destination);

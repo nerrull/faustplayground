@@ -120,7 +120,8 @@ class ModuleView {
     // ------ Returns Graphical input and output Node
     getOutputNode(): HTMLElement { return this.fOutputNode; }
     getInputNode(): HTMLElement { return this.fInputNode; }
-
+    getMidiNode(): HTMLElement { return this.fMidiNode; }
+    
     getModuleContainer(): HTMLElement {
         return this.fModuleContainer;
     }

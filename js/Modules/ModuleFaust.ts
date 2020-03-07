@@ -15,7 +15,10 @@ class ModuleFaust {
     fInputConnections: Connector[] = [];
     pOutputConnections: Connector[] = [];
     pInputConnections: Connector[] = [];
+    mOutputConnections: Connector[] = [];
+    mInputConnections: Connector[] = [];
     recallOutputsDestination: string[]=[];
+    recallMidiDestination: JsonMidiConnectionInfo[]=[];
     recallInputsSource: string[]=[];
 
     constructor(name: string) {
@@ -36,6 +39,20 @@ class ModuleFaust {
     }
     getOutputConnections(): Connector[] {
         return this.fOutputConnections;
+    }
+
+    getParameterInputConnections(): Connector[] {
+        return this.pInputConnections;
+    }
+    getParameterOutputConnections(): Connector[] {
+        return this.pOutputConnections;
+    }
+
+    getMidiInputConnections(): Connector[] {
+        return this.mInputConnections;
+    }
+    getMidiOutputConnections(): Connector[] {
+        return this.mOutputConnections;
     }
 
     addOutputConnection(connector: Connector): void {
@@ -64,6 +81,20 @@ class ModuleFaust {
     }
     removeParameterInputConnection(connector: Connector): void {
         this.pInputConnections.splice(this.pInputConnections.indexOf(connector), 1);
+    }
+
+    addMidiOutputConnection(connector: Connector): void {
+        this.mOutputConnections.push(connector);
+    }
+    addMidiInputConnection(connector: Connector): void {
+        this.mInputConnections.push(connector);
+    }
+
+    removeMidiOutputConnection(connector: Connector): void {
+        this.mOutputConnections.splice(this.mOutputConnections.indexOf(connector), 1);
+    }
+    removeMidiInputConnection(connector: Connector): void {
+        this.mInputConnections.splice(this.mInputConnections.indexOf(connector), 1);
     }
 
     /********************** GET/SET SOURCE/NAME/DSP ***********************/

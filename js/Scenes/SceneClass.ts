@@ -11,7 +11,7 @@
 class Scene {
     //temporary arrays used to recall a scene from a jfaust file
     arrayRecalScene: JsonSaveModule[] = [];
-    arrayRecalledModule: ModuleClass[] = [];
+    arrayRecalledModule: GraphicalModule[] = [];
 
     isMute: boolean = false;
     //-- Audio Input/Output
@@ -226,6 +226,7 @@ class Scene {
                 let module = this.fModuleList[i] as ModuleClass
                 var jsonObject = jsonObjectCollection[this.fModuleList[i].patchID.toString()];
                 jsonObject.sceneName = this.sceneName;
+                jsonObject.moduleJSON = module.getJSON();
                 jsonObject.patchId = module.patchID.toString();
                 jsonObject.code = module.moduleFaust.getSource();
                 jsonObject.name = module.moduleFaust.getName();
@@ -241,7 +242,7 @@ class Scene {
                     }
                 }
 
-                var outputs = module.moduleFaust.getOutputConnections();
+                var outputs :Connector[]= module.moduleFaust.getOutputConnections();
                 var jsonOutputs: JsonOutputsSave = new JsonOutputsSave();
                 jsonOutputs.destination = [];
 
@@ -251,17 +252,50 @@ class Scene {
                     }
                 }
 
-                var params = module.moduleFaust.getDSP().getParams();
-                var jsonParams: JsonParamsSave = new JsonParamsSave();
-                jsonParams.sliders = []
-                if (params) {
-                    for (var j = 0; j < params.length; j++) {
-                        var jsonSlider: JsonSliderSave = new JsonSliderSave();
-                        jsonSlider.path = params[j];
-                        jsonSlider.value = module.moduleFaust.getDSP().getParamValue(params[j]);
-                        jsonParams.sliders.push(jsonSlider);
-                    }
+                var midiOutputs :Connector[]= module.moduleFaust.getMidiOutputConnections();
+                var jsonMidiOutputs: JsonMidiConnectionSave = new JsonMidiConnectionSave();
+                jsonMidiOutputs.connections = [];
+                var info : JsonMidiConnectionInfo;
 
+                if (midiOutputs) {
+                    for (var j = 0; j < midiOutputs.length; j++) {
+                        info.destination = midiOutputs[j].destination.patchID.toString();
+                        info.instrumentID = midiOutputs[j].midiInstrumentID;
+                        jsonMidiOutputs.connections.push(info);
+                    }
+                }
+
+
+                if (module.moduleFaust.getDSP())
+                {
+                    var params = module.moduleFaust.getDSP().getParams();
+                    var jsonParams: JsonParamsSave = new JsonParamsSave();
+                    jsonParams.sliders = []
+                    if (params) {
+                        for (var j = 0; j < params.length; j++) {
+                            var jsonSlider: JsonSliderSave = new JsonSliderSave();
+                            jsonSlider.path = params[j];
+                            jsonSlider.value = module.moduleFaust.getDSP().getParamValue(params[j]);
+                            jsonParams.sliders.push(jsonSlider);
+                        }
+
+                    }
+                    
+                var factorySave: JsonFactorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
+
+                if (factorySave && isPrecompiled) {
+                    jsonObject.factory = new JsonFactorySave();
+                    jsonObject.factory.name = factorySave.name;
+                    jsonObject.factory.code = factorySave.code;
+                    jsonObject.factory.code_source = factorySave.code_source;
+                    jsonObject.factory.helpers = factorySave.helpers;
+                    jsonObject.factory.name_effect = factorySave.name_effect;
+                    jsonObject.factory.code_effect = factorySave.code_effect;
+                    jsonObject.factory.code_source_effect = factorySave.code_source_effect;
+                    jsonObject.factory.helpers_effect = factorySave.helpers_effect;
+                    jsonObject.factory.isMidi = factorySave.isMidi;
+
+    	         }
                 }
                 //var faustIControler = this.fModuleList[i].moduleControles;
                 //var jsonAccs = new JsonAccSaves();
@@ -281,23 +315,10 @@ class Scene {
 
                 jsonObject.inputs = jsonInputs;
                 jsonObject.outputs = jsonOutputs;
+                jsonObject.midiOutputs = jsonMidiOutputs;
                 jsonObject.params = jsonParams;
+                jsonObject.moduleType = module.moduleType;
 
-                var factorySave: JsonFactorySave = faust.writeDSPFactoryToMachine(module.moduleFaust.factory);
-
-                if (factorySave && isPrecompiled) {
-                    jsonObject.factory = new JsonFactorySave();
-                    jsonObject.factory.name = factorySave.name;
-                    jsonObject.factory.code = factorySave.code;
-                    jsonObject.factory.code_source = factorySave.code_source;
-                    jsonObject.factory.helpers = factorySave.helpers;
-                    jsonObject.factory.name_effect = factorySave.name_effect;
-                    jsonObject.factory.code_effect = factorySave.code_effect;
-                    jsonObject.factory.code_source_effect = factorySave.code_source_effect;
-                    jsonObject.factory.helpers_effect = factorySave.helpers_effect;
-                    jsonObject.factory.isMidi = factorySave.isMidi;
-
-    	         }
             }
         }
 
@@ -342,12 +363,23 @@ class Scene {
                 	 this.updateAppTempModuleInfo(jsonObject);
                		 this.sceneName = jsonObject.sceneName;
                		 this.createModule(factory)});
-            } else if (jsonObject.patchId != "output" && jsonObject.patchId != "input") {
+            } else if (jsonObject.moduleType== ModuleType.MidiController){
+                console.log(jsonObject);
+                this.tempPatchId = jsonObject.patchId;
+                this.updateAppTempModuleInfo(jsonObject);
+               	this.sceneName = jsonObject.sceneName;
+               	this.createCompositionModule(jsonObject.moduleJSON);
+            }  
+            else if (jsonObject.patchId != "output" && jsonObject.patchId != "input") {
                 this.tempPatchId = jsonObject.patchId;
                 this.sceneName = jsonObject.sceneName;
                 var argumentCompile = { isMidi: false, name:jsonObject.name,sourceCode: jsonObject.code,x: parseFloat(jsonObject.x),y: parseFloat(jsonObject.y), callback:(factory) => { this.createModule(factory) }}
                 this.compileFaust(argumentCompile);
-            } else {
+            }
+            else if (jsonObject.moduleType== ModuleType.SamplePlayer){
+                
+            } 
+            else {
                 this.arrayRecalScene.shift();
                 this.launchModuleCreation();
             }
@@ -396,12 +428,18 @@ class Scene {
 			    	}
             	}
             	module.moduleFaust.recallInputsSource = this.arrayRecalScene[0].inputs.source;
-            	module.moduleFaust.recallOutputsDestination = this.arrayRecalScene[0].outputs.destination;
+                module.moduleFaust.recallOutputsDestination = this.arrayRecalScene[0].outputs.destination;
+
             	this.arrayRecalledModule.push(module);
             	module.recallInterfaceParams();
             	module.setFaustInterfaceControles();
             	module.createFaustInterface();
                 module.addInputOutputNodes();
+                if (factory.isMidi){
+                    module.isMidi = true;
+                    module.addMidiControlNode();
+                }
+
                 this.addModule(module);
 
                 //next module
@@ -416,14 +454,54 @@ class Scene {
         }
     }
 
+    createCompositionModule(moduleJson):void {
+        //create new module
+        try {
+             new CompositionModule(Utilitary.idX++, this.tempModuleX,
+                this.tempModuleY, this.tempModuleName, 
+                document.getElementById("modules"), 
+                (module) => { this.removeModule(module) }, 
+                moduleJson, 
+                (module) =>{
+                    module.patchID = this.tempPatchId;
+                    if (this.tempParams) {
+                        for (var i = 0; i < this.tempParams.sliders.length; i++) {
+                            var slider = this.tempParams.sliders[i];
+                            module.addInterfaceParam(slider.path, parseFloat(slider.value));
+                        }
+                    }
+                    
+
+                    // module.moduleFaust.recallMidiDestination = this.arrayRecalScene[0].midiOutputs.connections;
+                    // this.arrayRecalledModule.push(module);
+                    module.recallInterfaceParams();                   
+                    
+                    module.setFaustInterfaceControles();
+                    module.createFaustInterface();
+                    module.addInputOutputNodes();
+                    // the current scene add the module and hide the loading page
+                    this.addModule(module);
+
+                    //next module
+                    this.arrayRecalScene.shift();
+                    this.launchModuleCreation();
+            });   
+        } catch (e) {
+            new Message(Utilitary.messageRessource.errorCreateModuleRecall);
+            //next module
+            this.arrayRecalScene.shift();
+            this.launchModuleCreation()
+        }
+    }
+
     //connect Modules recalled
-    connectModule(module: ModuleClass) {
+    connectModule(module: GraphicalModule) {
         try {
             for (var i = 0; i < module.moduleFaust.recallInputsSource.length; i++) {
                 var moduleSource = this.getModuleByPatchId(module.moduleFaust.recallInputsSource[i]);
                 if (moduleSource != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(moduleSource as ModuleClass, moduleSource.moduleView.getOutputNode(), module, module.moduleView.getInputNode());
+                    connector.createConnection(moduleSource as ModuleClass, moduleSource.moduleView.getOutputNode(), module as ModuleClass, module.moduleView.getInputNode());
                 }
             }
 
@@ -431,7 +509,18 @@ class Scene {
                 var moduleDestination = this.getModuleByPatchId(module.moduleFaust.recallOutputsDestination[i]);
                 if (moduleDestination != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(module, module.moduleView.getOutputNode(), moduleDestination as ModuleClass, moduleDestination.moduleView.getInputNode());
+                    connector.createConnection(module as ModuleClass, module.moduleView.getOutputNode(), moduleDestination as ModuleClass, moduleDestination.moduleView.getInputNode());
+                }
+            }
+
+            //reconnect midi
+            for (var i = 0; i < module.moduleFaust.recallMidiDestination.length; i++) {
+                var connection : JsonMidiConnectionInfo =module.moduleFaust.recallMidiDestination[i]
+                var moduleDestination : GraphicalModule = this.getModuleByPatchId(connection.instrumentID);
+                if (moduleDestination != null) {
+                    var connector: Connector = new Connector();
+                    connector.midiInstrumentID = connection.instrumentID;
+                    connector.createConnection(module as CompositionModule, (module as CompositionModule).getMidiOutput(connection.destination), moduleDestination as ModuleClass, moduleDestination.moduleView.getMidiNode());
                 }
             }
         } catch (e) {
@@ -564,6 +653,11 @@ interface IJsonSaveModule {
     outputs: IJsonOutputsSave;
     params: IJsonParamsSave;
     factory: IJsonFactorySave;
+    //new params for midi mainly
+    moduleType: ModuleType;
+    moduleJSON: JSONModuleDescription;
+    midiOutputs: JsonMidiConnectionSave;
+
 }
 
 class JsonSaveModule implements IJsonSaveModule {
@@ -577,11 +671,26 @@ class JsonSaveModule implements IJsonSaveModule {
     outputs: IJsonOutputsSave;
     params: IJsonParamsSave;
     factory: IJsonFactorySave;
+
+    //new params
+    moduleType: ModuleType;
+    moduleJSON: JSONModuleDescription;
+    midiOutputs: JsonMidiConnectionSave;
+}
+
+class JsonMidiConnectionInfo{
+    destination: string;
+    instrumentID: string;
+}
+
+class JsonMidiConnectionSave {
+    connections: JsonMidiConnectionInfo[]
 }
 
 interface IJsonOutputsSave {
     destination: string[]
 }
+
 class JsonOutputsSave implements IJsonOutputsSave {
     destination: string[]
 }

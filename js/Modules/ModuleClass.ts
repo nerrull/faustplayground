@@ -34,6 +34,7 @@ class ModuleClass extends GraphicalModule  {
         this.deleteCallback = removeModuleCallBack;
         // this.moduleFaust = new ModuleFaust(name);
         this.typeString = "dsp"
+        this.moduleType = ModuleType.FaustDSP;
     }
     
 

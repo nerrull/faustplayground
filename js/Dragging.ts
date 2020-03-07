@@ -280,10 +280,10 @@ class Drag {
                         this.connector.dstNode = target;
                         let fSrc = src as CompositionModule;
                         let fDst = dst as ModuleClass;
-                        console.log(`Trying to connect ${ fSrc.getType}-${this.instrument_id} to ${fDst.moduleFaust.fName}` )
+                        console.log(`Trying to connect ${ fSrc.getType()}-${this.instrument_id} to ${fDst.moduleFaust.fName}` )
                         this.connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);                                     
-                        dst.moduleFaust.addParameterInputConnection(this.connector);
-                        src.moduleFaust.addParameterOutputConnection(this.connector);
+                        dst.moduleFaust.addMidiInputConnection(this.connector);
+                        src.moduleFaust.addMidiInputConnection(this.connector);
     
                         return
                     }
@@ -300,7 +300,7 @@ class Drag {
 
                     return;
                 }
-                else if(src.getType() === "midi"){
+                else if(src.getModuleType() === ModuleType.MidiController){
                     let fSrc = src as ModuleMIDIReader;
                     let fDst = dst as ModuleClass;
                     //todo check if fdst is poly

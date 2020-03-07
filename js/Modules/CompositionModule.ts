@@ -147,7 +147,7 @@ class CompositionModule extends GraphicalModule{
     movementIndex : number;
     totalMovements: number;
     movements: iMovement[];
-    
+
     currentMovement : iMovement;
     instruments : Set<string>;
     instrumentControllers : {[instrument:string]:InstrumentController};
@@ -173,6 +173,8 @@ class CompositionModule extends GraphicalModule{
         
         this.deleteCallback = removeModuleCallBack;
         this.typeString = "midimaster"
+        this.moduleType = ModuleType.MidiController;
+
         this.instruments = new Set<string>()
         this.movements = []
         this.instrumentControllers = {}
@@ -208,6 +210,8 @@ class CompositionModule extends GraphicalModule{
         for (let i =0; i<comp.n_movements; i++){
             movement = comp.movements[i];
             this.movements.push(movement);
+            console.log(`Movement contains ${movement.instruments} instruments`)
+
             for(let inst of movement.instruments ){
                 this.instruments.add(inst);
                 if (this.instrumentControllers[inst]==null){
@@ -461,7 +465,15 @@ class CompositionModule extends GraphicalModule{
     }
     
     
-        
+        getMidiOutput( instrument_id: string)  :HTMLElement{
+            for (let i =0 ; i<this.moduleControles.length; i++){
+                var controler : FaustInterfaceControler = this.moduleControles[i];
+                if (controler.faustInterfaceView.label.textContent === instrument_id)
+                {
+                    return controler.faustInterfaceView.outputNode;
+                }
+            }
+        }
         // interface Iitem{
         //     label: string;
         //     init: string;
@@ -519,5 +531,12 @@ class CompositionModule extends GraphicalModule{
             return [];
             //return this.MIDIcontrol.fOutputConnections;
         }
-        
+
+        // getSource(): string { return this.fSource; }
+
+        // setSource(code: string): void {
+        //     this.fSource = code;
+        // }
+
+
     }

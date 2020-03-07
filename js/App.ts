@@ -42,7 +42,6 @@ class JSONModuleDescription {
     name: string;
     path: string;
     file: string;
-
     moduleType: string;
 }
 
@@ -276,13 +275,14 @@ class App {
                     module.setFaustInterfaceControles();
                     module.createFaustInterface();
                     module.addInputOutputNodes();
+                    module.setJSON(moduleJson);
                     // the current scene add the module and hide the loading page
                     Utilitary.currentScene.addModule(module);
                     if (!Utilitary.currentScene.isInitLoading) {
                         Utilitary.hideFullPageLoading()
                     }
                 }
-                );
+            );
         }
         
     }
@@ -470,8 +470,12 @@ class App {
         if (ext == "dsp") {
             type = "dsp";
             reader.readAsText(file);
-        } else if (ext == "json"||ext=="jfaust") {
+        } else if (ext == "json") {
             type = "json";
+            reader.readAsText(file);
+        }
+        else if (ext=="jfaust") {
+                type = "jfaust";
             reader.readAsText(file);
         } else if (ext == ".polydsp") {
             type = "poly";
@@ -486,8 +490,9 @@ class App {
             if (!module ){
                 if( type == "dsp") {
                     this.compileFaust({ isMidi :false, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
-                }
-                else if (type == "poly") {
+                }else if (type == "jfaust") {
+                    Utilitary.currentScene.recallScene(reader.result);
+                }else if (type == "poly") {
                     this.compileFaust({ isMidi :true, name:filename, sourceCode:dsp_code, x:x, y:y, callback:(factory) => { this.createModule(factory) }});
                 }
             }
@@ -495,7 +500,7 @@ class App {
                 if (type == "dsp") {
                     module.isMidi= false;
                     module.update(filename, dsp_code);
-                } else if (type == "json") {
+                } else if (type == "jfaust") {
                     Utilitary.currentScene.recallScene(reader.result);
                 } else if (type == "poly") {
                     module.isMidi= true;
