@@ -276,15 +276,21 @@ class Drag {
                         if (target.classList.contains("node-button")) {
                             target = <HTMLElement>target.parentNode;
                         }            
-                        this.connector.sourceNode = this.dragSourceNode;
-                        this.connector.dstNode = target;
+
+                        var connector = new Connector();
+                        connector.sourceNode = this.dragSourceNode;
+                        connector.dstNode = target;
                         let fSrc = src as CompositionModule;
                         let fDst = dst as ModuleClass;
-                        console.log(`Trying to connect ${ fSrc.getType()}-${this.instrument_id} to ${fDst.moduleFaust.fName}` )
-                        this.connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);                                     
-                        dst.moduleFaust.addMidiInputConnection(this.connector);
-                        src.moduleFaust.addMidiInputConnection(this.connector);
-    
+
+                        console.log(`Trying to connect ${ fSrc.getType()}-${this.instrument_id} to ${fDst.moduleFaust.fName}` )  
+
+                        connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
+                        dst.moduleFaust.addMidiInputConnection(connector);
+                        src.moduleFaust.addMidiInputConnection(connector);
+                        connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
+                        this.connector.connectorShape.onclick = (event)=> { connector.deleteMidiConnection(event,this) };
+
                         return
                     }
                     if (target.classList.contains("node-button")) {
@@ -297,26 +303,8 @@ class Drag {
                     this.connector.connectModuleParameters(src, dst, this.parameterAddress, targetParameterAddress);                                     
                     dst.moduleFaust.addParameterInputConnection(this.connector);
                     src.moduleFaust.addParameterOutputConnection(this.connector);
+                    this.connector.connectorShape.onclick = (event)=> { connector.deleteParameterConnection(event,this) };
 
-                    return;
-                }
-                else if(src.getModuleType() === ModuleType.MidiController){
-                    let fSrc = src as ModuleMIDIReader;
-                    let fDst = dst as ModuleClass;
-                    //todo check if fdst is poly
-                    this.connector.connectMidiModules(fSrc, fDst);
-                    
-                    fDst.moduleFaust.addInputConnection(this.connector);
-                    //todo
-                    fSrc.moduleFaust.addOutputConnection(this.connector);
-                    
-                    this.connector.destination = fDst;
-                    //this.connector.source = fSrc;
-                    //connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
-                    //todo
-                    this.connector.connectorShape.onclick = (event)=> { connector.deleteConnection(event,this) };
-                    
-                    //this.connectorShape = null;
                     return;
                 }
 

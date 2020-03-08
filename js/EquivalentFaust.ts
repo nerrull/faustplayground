@@ -105,7 +105,7 @@ class EquivalentFaust {
 
             if (module.moduleFaust.getInputConnections()) {
                 for (var j = 0; j < module.moduleFaust.getInputConnections().length; j++)
-                    moduleTree.moduleInputs[j] = this.createTree(module.moduleFaust.getInputConnections()[j].source, moduleTree);
+                    moduleTree.moduleInputs[j] = this.createTree(module.moduleFaust.getInputConnections()[j].source as ModuleClass, moduleTree);
             }
         }
 
@@ -165,7 +165,7 @@ class EquivalentFaust {
     }
 
     // Computing the trees unconnected to the output
-    connectUnconnectedModules(faustModuleList: ModuleClass[], output: ModuleClass):void {
+    connectUnconnectedModules(faustModuleList: GraphicalModule[], output: ModuleClass):void {
 
         for (var i in faustModuleList) {
 

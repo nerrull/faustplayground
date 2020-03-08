@@ -746,14 +746,17 @@ class Drag {
                         if (target.classList.contains("node-button")) {
                             target = target.parentNode;
                         }
-                        this.connector.sourceNode = this.dragSourceNode;
-                        this.connector.dstNode = target;
+                        var connector = new Connector();
+                        connector.sourceNode = this.dragSourceNode;
+                        connector.dstNode = target;
                         let fSrc = src;
                         let fDst = dst;
                         console.log(`Trying to connect ${fSrc.getType()}-${this.instrument_id} to ${fDst.moduleFaust.fName}`);
-                        this.connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
-                        dst.moduleFaust.addMidiInputConnection(this.connector);
-                        src.moduleFaust.addMidiInputConnection(this.connector);
+                        connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
+                        dst.moduleFaust.addMidiInputConnection(connector);
+                        src.moduleFaust.addMidiInputConnection(connector);
+                        connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
+                        this.connector.connectorShape.onclick = (event) => { connector.deleteMidiConnection(event, this); };
                         return;
                     }
                     if (target.classList.contains("node-button")) {
@@ -766,22 +769,7 @@ class Drag {
                     this.connector.connectModuleParameters(src, dst, this.parameterAddress, targetParameterAddress);
                     dst.moduleFaust.addParameterInputConnection(this.connector);
                     src.moduleFaust.addParameterOutputConnection(this.connector);
-                    return;
-                }
-                else if (src.getModuleType() === ModuleType.MidiController) {
-                    let fSrc = src;
-                    let fDst = dst;
-                    //todo check if fdst is poly
-                    this.connector.connectMidiModules(fSrc, fDst);
-                    fDst.moduleFaust.addInputConnection(this.connector);
-                    //todo
-                    fSrc.moduleFaust.addOutputConnection(this.connector);
-                    this.connector.destination = fDst;
-                    //this.connector.source = fSrc;
-                    //connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
-                    //todo
-                    this.connector.connectorShape.onclick = (event) => { connector.deleteConnection(event, this); };
-                    //this.connectorShape = null;
+                    this.connector.connectorShape.onclick = (event) => { connector.deleteParameterConnection(event, this); };
                     return;
                 }
                 else {
@@ -1960,6 +1948,9 @@ class GraphicalModule {
     getOutputParameterConnections() {
         return this.moduleFaust.pOutputConnections;
     }
+    getInputMidiConnections() {
+        return this.moduleFaust.mInputConnections;
+    }
 }
 GraphicalModule.isNodesModuleUnstyle = true;
 /*				MODULECLASS.JS
@@ -2512,45 +2503,92 @@ function clone(o) {
     return ret;
 }
 ;
-function Replayer(midiFile, timeWarp, eventProcessor, bpm) {
-    var trackStates = [];
-    var beatsPerMinute = bpm ? bpm : 120;
-    var bpmOverride = bpm ? true : false;
-    var ticksPerBeat = midiFile.header.ticksPerBeat;
-    for (var i = 0; i < midiFile.tracks.length; i++) {
-        trackStates[i] = {
-            'nextEventIndex': 0,
-            'ticksToNextEvent': (midiFile.tracks[i].length ?
-                midiFile.tracks[i][0].deltaTime :
-                null)
-        };
+class ReplayerMidiEvent {
+}
+;
+class TrackState {
+}
+;
+class TemporalMidi {
+}
+;
+class Replayer {
+    constructor(midiFile, timeWarp, eventProcessor, bpm) {
+        this.midiEvent = [];
+        this.temporal = [];
+        this.currentBeat = 0;
+        this.midiFile = midiFile;
+        this.trackStates = [];
+        this.beatsPerMinute = bpm ? bpm : 120;
+        this.bpmOverride = bpm ? true : false;
+        this.ticksPerBeat = midiFile.header.ticksPerBeat;
+        for (var i = 0; i < midiFile.tracks.length; i++) {
+            this.trackStates[i] = {
+                'nextEventIndex': 0,
+                'ticksToNextEvent': (midiFile.tracks[i].length ?
+                    midiFile.tracks[i][0].deltaTime :
+                    null)
+            };
+        }
+        this.processEvents();
     }
-    function getNextEvent() {
+    getData() {
+        return clone(this.temporal);
+    }
+    processEvents() {
+        var midiEvent = this.getNextEvent();
+        if (midiEvent) {
+            while (midiEvent) {
+                midiEvent = this.processNext(midiEvent);
+            }
+        }
+    }
+    ;
+    processNext(midiEvent) {
+        if (!this.bpmOverride && midiEvent.event.type == "meta" && midiEvent.event.subtype == "setTempo") {
+            // tempo change events can occur anywhere in the middle and affect events that follow
+            var beatsPerMinute = 60000000 / midiEvent.event.microsecondsPerBeat;
+        }
+        ///
+        var beatsToGenerate = 0;
+        var secondsToGenerate = 0;
+        if (midiEvent.ticksToEvent > 0) {
+            beatsToGenerate = midiEvent.ticksToEvent / this.ticksPerBeat;
+            secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
+        }
+        this.currentBeat = this.currentBeat + beatsToGenerate;
+        ///
+        var time = (secondsToGenerate * 1000 * this.timeWarp) || 0;
+        this.temporal.push({ "event": midiEvent, "time": time, "beatOffset": beatsToGenerate, "beat": this.currentBeat });
+        return this.getNextEvent();
+    }
+    ;
+    getNextEvent() {
         var ticksToNextEvent = null;
         var nextEventTrack = null;
         var nextEventIndex = null;
-        for (var i = 0; i < trackStates.length; i++) {
-            if (trackStates[i].ticksToNextEvent != null
-                && (ticksToNextEvent == null || trackStates[i].ticksToNextEvent < ticksToNextEvent)) {
-                ticksToNextEvent = trackStates[i].ticksToNextEvent;
+        for (var i = 0; i < this.trackStates.length; i++) {
+            if (this.trackStates[i].ticksToNextEvent != null
+                && (ticksToNextEvent == null || this.trackStates[i].ticksToNextEvent < ticksToNextEvent)) {
+                ticksToNextEvent = this.trackStates[i].ticksToNextEvent;
                 nextEventTrack = i;
-                nextEventIndex = trackStates[i].nextEventIndex;
+                nextEventIndex = this.trackStates[i].nextEventIndex;
             }
         }
         if (nextEventTrack != null) {
             /* consume event from that track */
-            var nextEvent = midiFile.tracks[nextEventTrack][nextEventIndex];
-            if (midiFile.tracks[nextEventTrack][nextEventIndex + 1]) {
-                trackStates[nextEventTrack].ticksToNextEvent += midiFile.tracks[nextEventTrack][nextEventIndex + 1].deltaTime;
+            var nextEvent = this.midiFile.tracks[nextEventTrack][nextEventIndex];
+            if (this.midiFile.tracks[nextEventTrack][nextEventIndex + 1]) {
+                this.trackStates[nextEventTrack].ticksToNextEvent += this.midiFile.tracks[nextEventTrack][nextEventIndex + 1].deltaTime;
             }
             else {
-                trackStates[nextEventTrack].ticksToNextEvent = null;
+                this.trackStates[nextEventTrack].ticksToNextEvent = null;
             }
-            trackStates[nextEventTrack].nextEventIndex += 1;
+            this.trackStates[nextEventTrack].nextEventIndex += 1;
             /* advance timings on all tracks by ticksToNextEvent */
-            for (var i = 0; i < trackStates.length; i++) {
-                if (trackStates[i].ticksToNextEvent != null) {
-                    trackStates[i].ticksToNextEvent -= ticksToNextEvent;
+            for (var i = 0; i < this.trackStates.length; i++) {
+                if (this.trackStates[i].ticksToNextEvent != null) {
+                    this.trackStates[i].ticksToNextEvent -= ticksToNextEvent;
                 }
             }
             return {
@@ -2563,43 +2601,6 @@ function Replayer(midiFile, timeWarp, eventProcessor, bpm) {
             return null;
         }
     }
-    ;
-    //
-    var midiEvent;
-    var temporal = [];
-    //
-    function processEvents() {
-        function processNext() {
-            if (!bpmOverride && midiEvent.event.type == "meta" && midiEvent.event.subtype == "setTempo") {
-                // tempo change events can occur anywhere in the middle and affect events that follow
-                beatsPerMinute = 60000000 / midiEvent.event.microsecondsPerBeat;
-            }
-            ///
-            var beatsToGenerate = 0;
-            var secondsToGenerate = 0;
-            if (midiEvent.ticksToEvent > 0) {
-                beatsToGenerate = midiEvent.ticksToEvent / ticksPerBeat;
-                secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
-            }
-            ///
-            var time = (secondsToGenerate * 1000 * timeWarp) || 0;
-            temporal.push([midiEvent, time, beatsToGenerate]);
-            midiEvent = getNextEvent();
-        }
-        ;
-        ///
-        if (midiEvent = getNextEvent()) {
-            while (midiEvent)
-                processNext();
-        }
-    }
-    ;
-    processEvents();
-    return {
-        "getData": function () {
-            return clone(temporal);
-        }
-    };
 }
 ;
 /*
@@ -2692,7 +2693,7 @@ class MIDIManager {
     loadMidiFile(data, onsuccess, onprogress, onerror) {
         try {
             this.currentData = data;
-            this.replayer = Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
+            this.replayer = new Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
             this.data = this.replayer.getData();
             this.endTime = this.getLength();
             //onsuccess()
@@ -2815,8 +2816,8 @@ class MIDIManager {
     readMidi() {
         var note;
         var offset = 0; //keeps track of where we are relative to current timestep
-        var messages = 0;
         var ctx = this.getContext();
+        var messages = 0;
         //var length = this.data.length;
         //var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
         //time relative to start
@@ -2825,10 +2826,10 @@ class MIDIManager {
         //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
         while (this.queuedTime <= this.currentTime + this.readMessageMinInterval * 2 / 1000.) {
             var obj = this.data[this.currentMidiMessageIndex];
-            //var midi_time = obj[1];
-            var midi_beats = obj[2];
+            //var midi_time = obj.time;
+            var midi_beats = obj.beatOffset;
             var note_s = AudioUtils.beatsToSeconds(midi_beats, this.BPM);
-            this.currentBeat += AudioUtils.floorBPM(midi_beats);
+            this.currentBeat += midi_beats; // AudioUtils.floorBPM(midi_beats);
             this.currentMidiMessageIndex += 1;
             if (this.currentMidiMessageIndex >= this.data.length) {
                 console.log(`${this.filename} LOOPING`);
@@ -2837,15 +2838,15 @@ class MIDIManager {
             this.currentMidiMessageIndex = this.currentMidiMessageIndex % this.data.length;
             //update queued time 
             this.queuedTime += note_s;
+            var event = obj.event.event;
             //Skip notes we were too late to read
             if (this.queuedTime < this.currentTime) {
-                console.log(`missed midi message ${obj[0].event.subtype}`);
+                console.log(`missed midi message ${event.subtype}`);
                 offset = this.queuedTime;
                 continue;
             }
             //update current time
             //currentTime = this.queuedTime - offset;
-            var event = obj[0].event;
             if (event.type !== 'channel') {
                 console.log(`dropped midi message ${event.subtype}`);
                 continue;
@@ -2911,7 +2912,7 @@ class MIDIManager {
             this.endTime = this.getLength();
             this.cacheLoaded = true;
         }
-        if (this.endTime < this.readMessageMinInterval) {
+        if (this.endTime < 4) {
             console.log(`${this.filename} is too short, aborting`);
             this.stop();
             return false;
@@ -2960,6 +2961,14 @@ class MIDIManager {
     }
     ;
     getLength() {
+        var data = this.data;
+        var length = data.length;
+        var totalBeats = data[length - 1].beat;
+        console.log(`Midi file length is ${totalBeats} beats long`);
+        return totalBeats;
+    }
+    ;
+    getBeats() {
         var data = this.data;
         var length = data.length;
         var totalTime = 0.5;
@@ -3184,6 +3193,7 @@ class Connector {
     // Connect Comp module to instrument
     connectMidiCompositionModule(source, destination, instrument_id) {
         this.midiInstrumentID = instrument_id;
+        this.targetPatchID = destination.patchID;
         var destinationDSP;
         if (destination != null && destination.moduleFaust.getDSP) {
             destinationDSP = destination.moduleFaust.getDSP();
@@ -3227,12 +3237,6 @@ class Connector {
             }
         }
     }
-    // Disconnect midi callback in composition module for instrument - need to store instrument in connector
-    disconnectMidiModules(source, destination) {
-    }
-    // Disconnect Nodes in Web Audio Graph
-    disconnectModuleParameters(source, destination) {
-    }
     /**************************************************/
     /***************** Save Connection*****************/
     /**************************************************/
@@ -3255,6 +3259,16 @@ class Connector {
         this.breakSingleInputConnection(this.source, this.destination, this);
         return true;
     }
+    deleteMidiConnection(event, drag) {
+        event.stopPropagation();
+        this.breakMidiConnection(this.source, this.destination, this);
+        return true;
+    }
+    deleteParameterConnection(event, drag) {
+        event.stopPropagation();
+        //todo : implement
+        return true;
+    }
     breakSingleInputConnection(source, destination, connector) {
         this.disconnectModules(source, destination);
         // delete connection from src .outputConnections,
@@ -3264,6 +3278,20 @@ class Connector {
         // delete connection from dst .inputConnections,
         if (destination != undefined && destination.moduleFaust.getInputConnections) {
             destination.moduleFaust.removeInputConnection(connector);
+        }
+        // and delete the connectorShape
+        if (connector.connectorShape)
+            connector.connectorShape.remove();
+    }
+    breakMidiConnection(source, destination, connector) {
+        // delete connection from src .outputConnections,
+        if (source != undefined) {
+            source.removeMidiConnection(connector);
+        }
+        // delete connection from dst .inputConnections,
+        if (destination != undefined && destination.moduleFaust.getInputConnections) {
+            //todo make sure callback is deleted when instrument is removed
+            //destination.removeMidiConnection(connector);
         }
         // and delete the connectorShape
         if (connector.connectorShape)
@@ -3304,8 +3332,9 @@ class Connector {
             currentConnectorShape.setAttributeNS(null, "d", d);
             drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
         }
-        for (var c = 0; c < module.getInputParameterConnections().length; c++) {
-            var connector = module.getInputParameterConnections()[c];
+        var pmConnections = [...module.getInputParameterConnections(), ...module.getInputMidiConnections()];
+        for (var c = 0; c < pmConnections.length; c++) {
+            var connector = pmConnections[c];
             var offset = connector.sourceNode;
             var x1 = 0;
             var y1 = 0;
@@ -3322,7 +3351,7 @@ class Connector {
                 y2 += offset.offsetTop;
                 offset = offset.offsetParent;
             }
-            var currentConnectorShape = module.getInputParameterConnections()[c].connectorShape;
+            var currentConnectorShape = connector.connectorShape;
             var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
             currentConnectorShape.setAttributeNS(null, "d", d);
             drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
@@ -3349,9 +3378,10 @@ class Connector {
                 drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
             }
         }
-        for (var c = 0; c < module.getOutputParameterConnections().length; c++) {
-            if (module.getOutputParameterConnections()[c].connectorShape) {
-                var connector = module.getOutputParameterConnections()[c];
+        var pmConnections = [...module.getInputParameterConnections(), ...module.getInputMidiConnections()];
+        for (var c = 0; c < pmConnections.length; c++) {
+            if (pmConnections[c].connectorShape) {
+                var connector = pmConnections[c];
                 var offset = connector.sourceNode;
                 var x1 = 0;
                 var y1 = 0;
@@ -3368,7 +3398,7 @@ class Connector {
                     y2 += offset.offsetTop;
                     offset = offset.offsetParent;
                 }
-                var currentConnectorShape = module.getOutputParameterConnections()[c].connectorShape;
+                var currentConnectorShape = connector.connectorShape;
                 var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2));
                 currentConnectorShape.setAttributeNS(null, "d", d);
                 drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
@@ -4616,18 +4646,6 @@ class JsonSliderSave {
 }
 class JsonFactorySave {
 }
-/*				MODULECLASS.JS
-HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
-
-*/
-/// <reference path="../Dragging.ts"/>
-/// <reference path="../CodeFaustParser.ts"/>
-/// <reference path="../Connect.ts"/>
-/// <reference path="../Modules/FaustInterface.ts"/>
-/// <reference path="../Messages.ts"/>
-/// <reference path="ModuleFaust.ts"/>
-/// <reference path="ModuleView.ts"/>
-/// <reference path="GraphicalModule.ts"/>
 //Todo, delete callback targets on cable deletion
 class InstrumentController {
     constructor(name, n_movements) {
@@ -4637,14 +4655,14 @@ class InstrumentController {
         this.currentMovement = 0;
         this.currentController = 0;
         this.isPlaying = false;
-        this.callbackTargets = [];
+        this.callbackTargets = {};
         this.connectors = [];
         for (let i = 0; i < n_movements; i++) {
             this.movementMidiControllers[i] = [];
         }
     }
     addMidiCallback(c, cb) {
-        this.callbackTargets.push(cb);
+        this.callbackTargets[c.targetPatchID] = cb;
         this.connectors.push(c);
         // for (let m of Object.keys(this.movementMidiControllers)){
         //     for (let c of this.movementMidiControllers[m]){
@@ -4652,13 +4670,14 @@ class InstrumentController {
         //     }
         // }
     }
+    removeMidiCallback(c) {
+        this.callbackTargets[c.targetPatchID] = null;
+    }
     midiCallback(midiInfo) {
         // console.log (`${Utilitary.audioContext.currentTime} :${this.name} - MIDI event: ${midiInfo.note}`);
-        var cbtl = this.callbackTargets.length;
-        if (cbtl > 0) {
-            for (let i = 0; i < cbtl; i++) {
-                this.callbackTargets[i](midiInfo);
-            }
+        for (var k in this.callbackTargets) {
+            if (this.callbackTargets[k])
+                this.callbackTargets[k](midiInfo);
         }
     }
     loadMidi(file, movement) {
@@ -4718,12 +4737,19 @@ class InstrumentController {
         this.play();
     }
 }
-//TODO:
-//make a midi output connector for each unique instrument
-//overall bpm slider
-//on movement load
-//calculate maximum number of bars possible 
-//todo: add probabilities
+/*				MODULECLASS.JS
+HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
+
+*/
+/// <reference path="../Dragging.ts"/>
+/// <reference path="../CodeFaustParser.ts"/>
+/// <reference path="../Connect.ts"/>
+/// <reference path="../Modules/FaustInterface.ts"/>
+/// <reference path="../Messages.ts"/>
+/// <reference path="ModuleFaust.ts"/>
+/// <reference path="ModuleView.ts"/>
+/// <reference path="GraphicalModule.ts"/>
+/// <reference path="InstrumentController.ts"/>
 class CompositionModule extends GraphicalModule {
     constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack, moduleInfo, loadedCallback) {
         super(id, x, y, name, htmlElementModuleContainer);
@@ -4898,6 +4924,13 @@ class CompositionModule extends GraphicalModule {
             console.log(`Failed to set callback because instrument ${id} does not exist`);
         }
         this.instrumentControllers[id].addMidiCallback(c, cb);
+    }
+    removeMidiConnection(c) {
+        var id = c.midiInstrumentID;
+        if (!this.instrumentControllers[id]) {
+            console.log(`Failed to remove callback because instrument ${id} does not exist`);
+        }
+        this.instrumentControllers[id].removeMidiCallback(c);
     }
     /******************** EDIT SOURCE & RECOMPILE *************************/
     //OVERRIDE

@@ -24,11 +24,14 @@ interface ConnectorShape extends SVGElement {
 class Connector {
     static connectorId: number = 0;
     connectorShape: ConnectorShape;
-    source: ModuleClass;
-    destination: ModuleClass;
+    source: GraphicalModule;
+    destination: GraphicalModule;
     sourceNode:HTMLElement;
     dstNode: HTMLElement;
+
     midiInstrumentID: string;
+    targetPatchID: string;
+
     
     // connect input node to device input
     connectInput(inputModule: ModuleClass, divSrc: IHTMLDivElementSrc): void {
@@ -81,6 +84,8 @@ class Connector {
     // Connect Comp module to instrument
     connectMidiCompositionModule(source: CompositionModule, destination: ModuleClass, instrument_id:string): void {
         this.midiInstrumentID = instrument_id;
+        this.targetPatchID = destination.patchID;
+
         var destinationDSP: IfDSP;
         if (destination != null && destination.moduleFaust.getDSP) {
             destinationDSP = destination.moduleFaust.getDSP();
@@ -125,20 +130,9 @@ class Connector {
         if (source!=undefined&&source.moduleFaust.getOutputConnections()) {
             for (var i = 0; i < source.moduleFaust.getOutputConnections().length; i++){
                 if (source.moduleFaust.getOutputConnections()[i].destination != destination)
-                this.connectModules(source, source.moduleFaust.getOutputConnections()[i].destination);
+                this.connectModules(source, source.moduleFaust.getOutputConnections()[i].destination as ModuleClass);
             }
         }
-    }
-
-    // Disconnect midi callback in composition module for instrument - need to store instrument in connector
-    disconnectMidiModules(source: CompositionModule, destination: ModuleClass):void {
-        
-  
-    }
-
-    // Disconnect Nodes in Web Audio Graph
-    disconnectModuleParameters(source: GraphicalModule, destination: GraphicalModule):void {
-
     }
     
     
@@ -149,7 +143,7 @@ class Connector {
     /**************************************************/
     
     //----- Add connection to src and dst connections structures
-    saveConnection(source: ModuleClass, destination: ModuleClass, connectorShape: ConnectorShape):void {
+    saveConnection(source: GraphicalModule, destination: GraphicalModule, connectorShape: ConnectorShape):void {
         this.connectorShape = connectorShape;
         this.destination = destination;
         this.source = source;
@@ -167,7 +161,20 @@ class Connector {
     
     deleteConnection(event: MouseEvent, drag: Drag): boolean {
         event.stopPropagation();
-        this.breakSingleInputConnection(this.source, this.destination, this);
+        this.breakSingleInputConnection(this.source as ModuleClass, this.destination as ModuleClass, this);
+        return true;
+    }
+
+    deleteMidiConnection(event: MouseEvent, drag: Drag): boolean {
+        event.stopPropagation();
+        this.breakMidiConnection(this.source as CompositionModule, this.destination as ModuleClass, this);
+        return true;
+    }
+
+    
+    deleteParameterConnection(event: MouseEvent, drag: Drag): boolean {
+        event.stopPropagation();
+        //todo : implement
         return true;
     }
     
@@ -189,6 +196,24 @@ class Connector {
         if(connector.connectorShape)
         connector.connectorShape.remove();
     }
+
+    breakMidiConnection(source: CompositionModule, destination: ModuleClass, connector: Connector) {
+              
+        // delete connection from src .outputConnections,
+        if (source != undefined ) {
+            source.removeMidiConnection(connector);
+        }
+        
+        // delete connection from dst .inputConnections,
+        if (destination != undefined && destination.moduleFaust.getInputConnections) {
+            //todo make sure callback is deleted when instrument is removed
+            //destination.removeMidiConnection(connector);
+        }
+        
+        // and delete the connectorShape
+        if(connector.connectorShape)
+            connector.connectorShape.remove();
+    }
     
     // Disconnect a node from all its connections
     disconnectModule(module: ModuleClass) {
@@ -196,13 +221,13 @@ class Connector {
         //for all output nodes
         if (module.moduleFaust.getOutputConnections && module.moduleFaust.getOutputConnections()) {
             while (module.moduleFaust.getOutputConnections().length > 0)
-            this.breakSingleInputConnection(module, module.moduleFaust.getOutputConnections()[0].destination, module.moduleFaust.getOutputConnections()[0]);
+            this.breakSingleInputConnection(module, module.moduleFaust.getOutputConnections()[0].destination as ModuleClass, module.moduleFaust.getOutputConnections()[0]);
         }
         
         //for all input nodes
         if (module.moduleFaust.getInputConnections && module.moduleFaust.getInputConnections()) {
             while (module.moduleFaust.getInputConnections().length > 0)
-            this.breakSingleInputConnection(module.moduleFaust.getInputConnections()[0].source, module, module.moduleFaust.getInputConnections()[0]);
+            this.breakSingleInputConnection(module.moduleFaust.getInputConnections()[0].source as ModuleClass, module, module.moduleFaust.getInputConnections()[0]);
         }
     }
     
@@ -233,8 +258,9 @@ class Connector {
             drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
         }
         
-        for (var c = 0; c < module.getInputParameterConnections().length; c++) {
-            var connector :Connector =module.getInputParameterConnections()[c];
+        var pmConnections = [...module.getInputParameterConnections(), ...module.getInputMidiConnections() ];
+        for (var c = 0; c < pmConnections.length; c++) {
+            var connector :Connector =pmConnections[c];
             var offset = <HTMLElement> connector.sourceNode;
             var x1 = 0;
             var y1 = 0;
@@ -253,12 +279,14 @@ class Connector {
                 offset =<HTMLElement> offset.offsetParent;
             }
 
-            var currentConnectorShape: ConnectorShape = module.getInputParameterConnections()[c].connectorShape;
+            var currentConnectorShape: ConnectorShape = connector.connectorShape;
             var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2))
             currentConnectorShape.setAttributeNS(null, "d", d);
             drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
         }
+
     }
+
     static redrawOutputConnections(module: GraphicalModule, drag: Drag) {
         var offset: HTMLElement = module.moduleView.getOutputNode();
         var x = module.moduleView.inputOutputNodeDimension / 2// + window.scrollX ;
@@ -283,9 +311,11 @@ class Connector {
                 drag.updateConnectorShapePath(currentConnectorShape,x1, x2, y1, y2);
             }
         }
-        for (var c = 0; c < module.getOutputParameterConnections().length; c++) {
-            if (module.getOutputParameterConnections()[c].connectorShape) {
-                var connector :Connector =module.getOutputParameterConnections()[c];
+
+        var pmConnections = [...module.getInputParameterConnections(), ...module.getInputMidiConnections() ];
+        for (var c = 0; c < pmConnections.length; c++) {
+            if (pmConnections[c].connectorShape) {
+                var connector :Connector = pmConnections[c];
                 var offset = <HTMLElement> connector.sourceNode;
                 var x1 = 0;
                 var y1 = 0;
@@ -304,7 +334,7 @@ class Connector {
                     offset = <HTMLElement>offset.offsetParent;
                 }
     
-                var currentConnectorShape: ConnectorShape = module.getOutputParameterConnections()[c].connectorShape;
+                var currentConnectorShape: ConnectorShape = connector.connectorShape;
                 var d = drag.setCurvePath(x1, y1, x2, y2, drag.calculBezier(x1, x2), drag.calculBezier(x1, x2))
                 
                 currentConnectorShape.setAttributeNS(null, "d", d);

@@ -11,6 +11,13 @@ HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
 /// <reference path="ModuleFaust.ts"/>
 /// <reference path="ModuleView.ts"/>
 /// <reference path="GraphicalModule.ts"/>
+/// <reference path="InstrumentController.ts"/>
+
+//TODO:
+//calculate maximum number of bars possible 
+
+//todo: add probabilities
+
 
 interface iMovement{
     min_loops: number, 
@@ -23,125 +30,6 @@ interface iComposition{
     movements: iMovement[]
 }
 
-//Todo, delete callback targets on cable deletion
-class InstrumentController{
-    name: string;
-    movementMidiControllers : {[id:number] : MIDIManager[]};
-    fileLoaded : boolean;
-    numbars : number;
-    currentMovement : number ;
-    currentController : number;
-    connectors : Connector[];
-    isPlaying :boolean;
-    callbackTargets :Function[];   
-
-    
-    constructor(name:string, n_movements:number){
-        this.name = name;
-        this.fileLoaded = false;
-        this.movementMidiControllers ={}// {number: MIDIManager[]}
-        this.currentMovement = 0;
-        this.currentController = 0;
-        this.isPlaying = false;
-        this.callbackTargets =[];
-        this.connectors = [];
-        for(let i =0; i <n_movements; i++){
-            this.movementMidiControllers[i] = []
-        }
-    }
-    addMidiCallback(c: Connector, cb:Function){
-        this.callbackTargets.push(cb);
-        this.connectors.push(c);
-        // for (let m of Object.keys(this.movementMidiControllers)){
-        //     for (let c of this.movementMidiControllers[m]){
-        //         c.addListener(cb);
-        //     }
-        // }
-    }
-    midiCallback(midiInfo){
-        // console.log (`${Utilitary.audioContext.currentTime} :${this.name} - MIDI event: ${midiInfo.note}`);
-        var cbtl = this.callbackTargets.length
-        if ( cbtl>0){
-            for (let i =0; i<cbtl; i++){
-                this.callbackTargets[i](midiInfo)
-            }
-        }
-    }
-    loadMidi(file, movement){
-        let m = new MIDIManager((midiInfo)=>this.midiCallback(midiInfo));
-        m.loadFile(file, (file) =>{this.midiLoaded(file)},null, (file)=> (this.midiLoadFailed(file)))
-        this.movementMidiControllers[movement].push(m);
-    }
-    
-    midiLoaded(filename:string):void{
-        console.log(this.name + " successfully loaded file : "+ filename)
-        this.fileLoaded =true;
-    }
-    
-    midiLoadFailed(filename:string):void{
-        console.log(this.name + " failed to load file : "+ filename)
-        this.fileLoaded =false;
-    }
-
-    readMidi(){
-        this.movementMidiControllers[this.currentMovement][this.currentController].readMidi();
-    }
-
-    play():void{
-        console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`)
-        let movementLength = this.movementMidiControllers[this.currentMovement].length;
-        if (movementLength >0){
-            if (this.currentController >=movementLength||this.currentController<0){
-                this.currentController =0;
-            }
-            
-            this.isPlaying = this.movementMidiControllers[this.currentMovement][this.currentController].start();;
-        }
-    }
-
-    setBPM(bpm){
-        for(let key of Object.keys(this.movementMidiControllers)){  
-            for (let c of this.movementMidiControllers[key]){
-                c.setBPM(bpm)
-            }
-        }
-    }
-
-    getBeat():number{
-        return this.movementMidiControllers[this.currentMovement][this.currentController].currentBeat;
-    }
-
-    getBeatTime():number{
-        if (this.isPlaying)
-            return this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime;
-        return -1
-    }
-
-    setBeatTime(bt):void{
-        if (this.isPlaying)
-            this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime = bt;
-    }
-    
-    stop():void{
-        if (this.movementMidiControllers[this.currentMovement] &&  this.movementMidiControllers[this.currentMovement][this.currentController]){
-            this.movementMidiControllers[this.currentMovement][this.currentController].stop();
-        }
-        this.isPlaying = false;
-    }
-    
-    loopCallback():void{
-        this.currentController +=1;
-        this.play();
-    }
-} 
-
-//TODO:
-//make a midi output connector for each unique instrument
-//overall bpm slider
-//on movement load
-//calculate maximum number of bars possible 
-
-//todo: add probabilities
 
 class CompositionModule extends GraphicalModule{
     movementIndex : number;
@@ -271,7 +159,6 @@ class CompositionModule extends GraphicalModule{
         }
     }
     
-    
     stopAll():void{
         this.isPlaying = false;
         for(let instrument of this.instruments){
@@ -288,14 +175,10 @@ class CompositionModule extends GraphicalModule{
         this.startMovement(this.movementIndex)
     }
 
-
-    
     //todo
     //callback to make sure midi players are in time (should all be at same fraction of beat)
     //adjust their clock so they're all in sync
     synchronizeInstruments():void{
-
-
         // let bt = 0;
         let beat_signatures = []
         let instrument_ids = []
@@ -371,6 +254,16 @@ class CompositionModule extends GraphicalModule{
 
         this.instrumentControllers[id].addMidiCallback(c, cb)
         
+    }
+
+    removeMidiConnection(c:Connector ):void{
+        var id = c.midiInstrumentID;
+
+        if(!this.instrumentControllers[id]){
+            console.log(`Failed to remove callback because instrument ${id} does not exist`);
+        }
+
+        this.instrumentControllers[id].removeMidiCallback(c);       
     }
 
     

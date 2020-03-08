@@ -28,7 +28,7 @@ class MIDIManager{
     //to type eventually
     filename: string;
     replayer : any;
-    data: any;
+    data: TemporalMidi[];
     currentData:any;
     eventQueue: any;
     noteRegistrar:any; // get event for requested note
@@ -141,7 +141,7 @@ class MIDIManager{
     loadMidiFile(data, onsuccess, onprogress, onerror):void {
         try {
             this.currentData = data;
-            this.replayer = Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
+            this.replayer = new Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
             this.data = this.replayer.getData();
             this.endTime = this.getLength();
             //onsuccess()
@@ -264,12 +264,10 @@ class MIDIManager{
 
     //read midi data and schedule note events
     readMidi():void{
-
         var note;
         var offset = 0;//keeps track of where we are relative to current timestep
-        var messages = 0;
         var ctx = this.getContext();
-
+        var messages =0;
         //var length = this.data.length;
         //var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
 
@@ -280,11 +278,11 @@ class MIDIManager{
         //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
         while (this.queuedTime <= this.currentTime + this.readMessageMinInterval*2/1000.) {
             var obj = this.data[this.currentMidiMessageIndex ];
-            //var midi_time = obj[1];
-            var midi_beats = obj[2];
+            //var midi_time = obj.time;
+            var midi_beats = obj.beatOffset;
             var note_s = AudioUtils.beatsToSeconds(midi_beats,this.BPM);
             
-            this.currentBeat += AudioUtils.floorBPM(midi_beats);
+            this.currentBeat += midi_beats;// AudioUtils.floorBPM(midi_beats);
             this.currentMidiMessageIndex +=1;
             if (this.currentMidiMessageIndex >= this.data.length){
                 console.log(`${this.filename} LOOPING`)
@@ -295,16 +293,17 @@ class MIDIManager{
             //update queued time 
             this.queuedTime += note_s
 
+
+            var event = obj.event.event;
             //Skip notes we were too late to read
             if (this.queuedTime < this.currentTime) {
-                console.log(`missed midi message ${obj[0].event.subtype}`)
+                console.log(`missed midi message ${event.subtype}`)
                 offset = this.queuedTime;
                 continue;
             }
 
             //update current time
             //currentTime = this.queuedTime - offset;
-            var event = obj[0].event;
             if (event.type !== 'channel') {
                 console.log(`dropped midi message ${event.subtype}`)
                 continue;
@@ -375,7 +374,7 @@ class MIDIManager{
             this.endTime = this.getLength();
             this.cacheLoaded = true;
         }
-        if (this.endTime <this.readMessageMinInterval){
+        if (this.endTime <4){
             console.log(`${this.filename} is too short, aborting`)
             this.stop();
             return false;
@@ -427,6 +426,15 @@ class MIDIManager{
     
     
     getLength() {
+        var data =  this.data;
+        var length = data.length;
+        var totalBeats =  data[length -1].beat;
+        console.log(`Midi file length is ${totalBeats} beats long` );
+        return totalBeats;
+    };
+
+        
+    getBeats() {
         var data =  this.data;
         var length = data.length;
         var totalTime = 0.5;

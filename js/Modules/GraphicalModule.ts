@@ -402,6 +402,12 @@ class GraphicalModule  {
     getOutputParameterConnections() : Connector[]{
         return this.moduleFaust.pOutputConnections;
     }
+
+    getInputMidiConnections() : Connector[]{
+        return this.moduleFaust.mInputConnections;
+    }
+    
+
     
     
     
