@@ -9,7 +9,8 @@
         "module": "system"
     },
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "**/archive/"
     ],
     "include": [
        "js/Main.ts"
