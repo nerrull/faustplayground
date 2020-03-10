@@ -62,7 +62,7 @@ class ModuleClass extends GraphicalModule  {
                 //let options = moduleFaust.factory.factory.json_object.meta;
                 //todo: make poly work
                 if (this.isMidi){
-                    faust.createPolyDSPInstance(factory, Utilitary.audioContext, 1024,16,
+                    faust.createPolyDSPWorkletInstance(factory, Utilitary.audioContext, 16,
                         function(dsp) {
                           if (dsp != null) {
                             moduleFaust.fDSP = dsp;
@@ -74,7 +74,7 @@ class ModuleClass extends GraphicalModule  {
                         });
                 }
                 else{
-                    faust.createDSPInstance(factory, Utilitary.audioContext, 1024,
+                    faust.createDSPWorkletInstance(factory, Utilitary.audioContext, 
                         function(dsp) {
                           if (dsp != null) {
                             moduleFaust.fDSP = dsp;
@@ -108,8 +108,11 @@ class ModuleClass extends GraphicalModule  {
         var base : string = this.moduleFaust.getBaseAdressPath();
         this.externalSetParamValue(base +'/freq', "" +AudioUtils.midiToFreq(midiInfo.note),  true);
         this.externalSetParamValue(base+'/gain', "" +AudioUtils.normalizeVelocity(midiInfo.note), true);
-
-        this.moduleFaust.fDSP.keyOn(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        if (midiInfo.on)
+            this.moduleFaust.fDSP.keyOn(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        else{
+            this.moduleFaust.fDSP.keyOff(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        }
     }
 
 
@@ -159,7 +162,7 @@ class ModuleClass extends GraphicalModule  {
     //Todo make poly work
     protected deleteDSP(todelete: IfDSP): void {
         if (todelete)
-            faust.deleteDSPInstance(todelete);
+            faust.deleteDSPWorkletInstance(todelete);
     }
     /******************** EDIT SOURCE & RECOMPILE *************************/
     //OVERRIDE

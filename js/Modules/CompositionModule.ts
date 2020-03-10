@@ -321,7 +321,7 @@ class CompositionModule extends GraphicalModule {
         this.deleteCallback(this);
     }
 
-    addMidiCallback(id: string, c: Connector, cb): void {
+    addMidiCallback(id: string, c: Connector, cb:Function): void {
         if (!this.instrumentControllers[id]) {
             console.log(`Failed to set callback because instrument ${id} does not exist`)
         }

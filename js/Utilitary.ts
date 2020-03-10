@@ -168,7 +168,7 @@ interface IfDSP extends AudioNode {
     getNumOutputs: () => number;
     getParams: () => any;
     keyOn: (channel: number, pitch: number, velocity:number) => void;
-    
+    keyOff: (channel: number, pitch: number, velocity:number) => void;
 }
 
 interface CompileFaust {

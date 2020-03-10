@@ -2153,6 +2153,7 @@ faust.createPolyDSPInstanceAux = function (factory, time1, mixer_instance, dsp_i
                 }
                 // Mix it in result
                 sp.dsp_voices_level[i] = sp.mixer.mixVoice(buffer_size, sp.numOut, sp.mixing, sp.outs);
+
                 // Check the level to possibly set the voice in kFreeVoice again
                 if ((sp.dsp_voices_level[i] < 0.0005) && (sp.dsp_voices_state[i] === sp.kReleaseVoice)) {
                     sp.dsp_voices_state[i] = sp.kFreeVoice;

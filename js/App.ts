@@ -283,8 +283,7 @@ class App {
                     }
                 }
             );
-        }
-        
+        }        
     }
 
     async loadAudioFile( path ): Promise<AudioBufferSourceNode>{

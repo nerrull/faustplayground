@@ -206,12 +206,13 @@ class MIDIManager {
         this.eventQueue.shift();
     }
 
-    scheduleNote(channel, note, eventTime, nowTime, endTime, message, velocity) {
+    scheduleNote(on,channel, note, eventTime, nowTime, endTime, message, velocity) {
         //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
 
         return setTimeout(() => {
             var data = {
                 channel: channel,
+                on: on,
                 note: note,
                 now: nowTime,
                 end: endTime,
@@ -264,16 +265,16 @@ class MIDIManager {
         }
         var eventBeat = this.nextMidiEvent.beat;
 
-
+        var loopcount = 0;
         // schedule midi events for next beatsToBuffer beats (at 120 bpm each beat is .5 s) - 2 beats : schedule approx 1 second ahead
-        while ( (!this.isLooping && eventBeat <= (relativeStartBeat + beatsToBuffer)) || (this.isLooping && (eventBeat <relativeEndBeat))) {
-            
+        while ( (!this.isLooping && eventBeat <= (relativeStartBeat + beatsToBuffer)) ) {//|| (this.isLooping && (eventBeat <relativeEndBeat))) {
+            loopcount++;
             var event = this.nextMidiEvent.event.event;
 
             //only log and skip missed notes when not in weird part of looping state
             if  (!this.isLooping && eventBeat < relativeStartBeat ) {
                 //console.log(`missed midi message ${event.subtype}`);
-                //console.log(`missed midi message`);
+                console.log(`missed midi message`);
                 this.nextMidiEvent = this.getNextMidiEvent();
                 eventBeat = this.nextMidiEvent.beat;
                 continue;
@@ -289,9 +290,10 @@ class MIDIManager {
             var channelId = event.channel;
 
             //Calculate how many ms to wait before trigggering midi note 
-            if (this.isLooping && eventBeat <  relativeStartBeat){
-                eventBeat +=this.totalBeats - this.currentBeat;
+            if (this.isLooping && eventBeat <  relativeEndBeat){
+                eventBeat +=this.totalBeats;
             }
+
             var beatOffsetSeconds = AudioUtils.beatsToSeconds(eventBeat - relativeStartBeat, BPM) - offset;
             this.currentBeat = this.nextMidiEvent.beat;
 
@@ -306,11 +308,21 @@ class MIDIManager {
                             event: event,
                             time: beatOffsetSeconds,
                             //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
-                            interval: this.scheduleNote(channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
+                            interval: this.scheduleNote(true,channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
                         });
                     }
                     
                     break;
+
+                case 'noteOff':
+                    messageCount++;
+                    var note = event.noteNumber - (this.MIDIOffset || 0);
+                        this.eventQueue.push({
+                            event: event,
+                            time: beatOffsetSeconds,
+                            //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
+                            interval: this.scheduleNote(false,channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
+                        });
                 default:
                     break;
             }
@@ -320,7 +332,7 @@ class MIDIManager {
             eventBeat = this.nextMidiEvent.beat;
 
         }
-
+        console.log(`${this.instrumentName} - ${this.filename} : looped ${loopcount} times at beat${relativeStartBeat}`);
        //console.log(`${this.instrumentName} - Scheduled ${messageCount} midi events - for beats [${relativeStartBeat.toPrecision(3)} - ${relativeEndBeat.toPrecision(3)}]/${this.totalBeats}`);
 
     }

@@ -79,6 +79,7 @@ class Replayer {
 			console.log(`padding with ${diff} beats`);
 			this.currentBeat +=diff;
 			var dummyEvent = this.temporal[this.temporal.length -1].event;
+			dummyEvent.event.type="endOfTrack"
 			this.temporal.push( {"event":dummyEvent, "time": 0, "beatOffset": diff, "beat": this.currentBeat});
 
 		}
@@ -98,7 +99,11 @@ class Replayer {
 			secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
 		}
 		this.currentBeat = this.currentBeat + beatsToGenerate;
-
+		//ignore meta events and controller events
+		if(midiEvent.event.type =="meta" || 
+			(midiEvent.event.type == "channel" &&( midiEvent.event.subtype =="controller" ||  midiEvent.event.subtype =="programChange"))){
+			return this.getNextEvent();
+		}
 		///
 		var time = (secondsToGenerate * 1000 * this.timeWarp) || 0;
 		this.temporal.push( {"event":midiEvent, "time": time, "beatOffset": beatsToGenerate, "beat": this.currentBeat});

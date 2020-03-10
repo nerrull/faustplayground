@@ -1646,6 +1646,7 @@ class GraphicalModule {
         this.dragList = [];
         this.moduleControles = [];
         this.fModuleInterfaceParams = {};
+        this.patchID = id.toString();
         this.eventConnectorHandler = (event) => { this.dragCnxCallback(event, this); };
         this.eventOpenEditHandler = () => { this.edit(); };
         this.eventDraggingHandler = (event) => { this.dragCallback(event, this); };
@@ -2007,7 +2008,7 @@ class ModuleClass extends GraphicalModule {
                 //let options = moduleFaust.factory.factory.json_object.meta;
                 //todo: make poly work
                 if (this.isMidi) {
-                    faust.createPolyDSPInstance(factory, Utilitary.audioContext, 1024, 16, function (dsp) {
+                    faust.createPolyDSPWorkletInstance(factory, Utilitary.audioContext, 16, function (dsp) {
                         if (dsp != null) {
                             moduleFaust.fDSP = dsp;
                             callback();
@@ -2019,7 +2020,7 @@ class ModuleClass extends GraphicalModule {
                     });
                 }
                 else {
-                    faust.createDSPInstance(factory, Utilitary.audioContext, 1024, function (dsp) {
+                    faust.createDSPWorkletInstance(factory, Utilitary.audioContext, function (dsp) {
                         if (dsp != null) {
                             moduleFaust.fDSP = dsp;
                             callback();
@@ -2051,7 +2052,11 @@ class ModuleClass extends GraphicalModule {
         var base = this.moduleFaust.getBaseAdressPath();
         this.externalSetParamValue(base + '/freq', "" + AudioUtils.midiToFreq(midiInfo.note), true);
         this.externalSetParamValue(base + '/gain', "" + AudioUtils.normalizeVelocity(midiInfo.note), true);
-        this.moduleFaust.fDSP.keyOn(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        if (midiInfo.on)
+            this.moduleFaust.fDSP.keyOn(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        else {
+            this.moduleFaust.fDSP.keyOff(midiInfo.channel, midiInfo.note, midiInfo.velocity);
+        }
     }
     //--- Update DSP in module
     updateDSP(factory, module) {
@@ -2091,7 +2096,7 @@ class ModuleClass extends GraphicalModule {
     //Todo make poly work
     deleteDSP(todelete) {
         if (todelete)
-            faust.deleteDSPInstance(todelete);
+            faust.deleteDSPWorkletInstance(todelete);
     }
     /******************** EDIT SOURCE & RECOMPILE *************************/
     //OVERRIDE
@@ -4078,6 +4083,7 @@ class Replayer {
             console.log(`padding with ${diff} beats`);
             this.currentBeat += diff;
             var dummyEvent = this.temporal[this.temporal.length - 1].event;
+            dummyEvent.event.type = "endOfTrack";
             this.temporal.push({ "event": dummyEvent, "time": 0, "beatOffset": diff, "beat": this.currentBeat });
         }
     }
@@ -4096,6 +4102,11 @@ class Replayer {
             secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
         }
         this.currentBeat = this.currentBeat + beatsToGenerate;
+        //ignore meta events and controller events
+        if (midiEvent.event.type == "meta" ||
+            (midiEvent.event.type == "channel" && (midiEvent.event.subtype == "controller" || midiEvent.event.subtype == "programChange"))) {
+            return this.getNextEvent();
+        }
         ///
         var time = (secondsToGenerate * 1000 * this.timeWarp) || 0;
         this.temporal.push({ "event": midiEvent, "time": time, "beatOffset": beatsToGenerate, "beat": this.currentBeat });
@@ -4293,11 +4304,12 @@ class MIDIManager {
         ///
         this.eventQueue.shift();
     }
-    scheduleNote(channel, note, eventTime, nowTime, endTime, message, velocity) {
+    scheduleNote(on, channel, note, eventTime, nowTime, endTime, message, velocity) {
         //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
         return setTimeout(() => {
             var data = {
                 channel: channel,
+                on: on,
                 note: note,
                 now: nowTime,
                 end: endTime,
@@ -4337,13 +4349,15 @@ class MIDIManager {
             return;
         }
         var eventBeat = this.nextMidiEvent.beat;
+        var loopcount = 0;
         // schedule midi events for next beatsToBuffer beats (at 120 bpm each beat is .5 s) - 2 beats : schedule approx 1 second ahead
-        while ((!this.isLooping && eventBeat <= (relativeStartBeat + beatsToBuffer)) || (this.isLooping && (eventBeat < relativeEndBeat))) {
+        while ((!this.isLooping && eventBeat <= (relativeStartBeat + beatsToBuffer))) { //|| (this.isLooping && (eventBeat <relativeEndBeat))) {
+            loopcount++;
             var event = this.nextMidiEvent.event.event;
             //only log and skip missed notes when not in weird part of looping state
             if (!this.isLooping && eventBeat < relativeStartBeat) {
                 //console.log(`missed midi message ${event.subtype}`);
-                //console.log(`missed midi message`);
+                console.log(`missed midi message`);
                 this.nextMidiEvent = this.getNextMidiEvent();
                 eventBeat = this.nextMidiEvent.beat;
                 continue;
@@ -4355,8 +4369,8 @@ class MIDIManager {
             }
             var channelId = event.channel;
             //Calculate how many ms to wait before trigggering midi note 
-            if (this.isLooping && eventBeat < relativeStartBeat) {
-                eventBeat += this.totalBeats - this.currentBeat;
+            if (this.isLooping && eventBeat < relativeEndBeat) {
+                eventBeat += this.totalBeats;
             }
             var beatOffsetSeconds = AudioUtils.beatsToSeconds(eventBeat - relativeStartBeat, BPM) - offset;
             this.currentBeat = this.nextMidiEvent.beat;
@@ -4370,10 +4384,19 @@ class MIDIManager {
                             event: event,
                             time: beatOffsetSeconds,
                             //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
-                            interval: this.scheduleNote(channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
+                            interval: this.scheduleNote(true, channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
                         });
                     }
                     break;
+                case 'noteOff':
+                    messageCount++;
+                    var note = event.noteNumber - (this.MIDIOffset || 0);
+                    this.eventQueue.push({
+                        event: event,
+                        time: beatOffsetSeconds,
+                        //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
+                        interval: this.scheduleNote(false, channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
+                    });
                 default:
                     break;
             }
@@ -4381,6 +4404,7 @@ class MIDIManager {
             //for edge case when relativeBeat + schedule offset (16) > total beats
             eventBeat = this.nextMidiEvent.beat;
         }
+        console.log(`${this.instrumentName} - ${this.filename} : looped ${loopcount} times at beat${relativeStartBeat}`);
         //console.log(`${this.instrumentName} - Scheduled ${messageCount} midi events - for beats [${relativeStartBeat.toPrecision(3)} - ${relativeEndBeat.toPrecision(3)}]/${this.totalBeats}`);
     }
     getNextMidiEvent() {

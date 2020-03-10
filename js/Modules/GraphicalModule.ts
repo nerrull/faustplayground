@@ -57,6 +57,7 @@ class GraphicalModule  {
     
 
     constructor(id: number, x: number, y: number, name: string, htmlElementModuleContainer: HTMLElement) {
+        this.patchID = id.toString();
         this.eventConnectorHandler = (event: MouseEvent) => { this.dragCnxCallback(event, this) };
         this.eventOpenEditHandler = () => { this.edit() }
         this.eventDraggingHandler = (event) => { this.dragCallback(event, this) };
