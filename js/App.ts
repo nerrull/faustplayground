@@ -250,21 +250,21 @@ class App {
             });
         }
 
-        else if (moduleJson.moduleType === "midi_reader"){
-            let module: ModuleMIDIReader = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX,
-                this.tempModuleY, this.tempModuleName, 
-                document.getElementById("modules"), 
-                (module) => { Utilitary.currentScene.removeModule(module) });
-            module.setFaustInterfaceControles();
-            module.createFaustInterface();
-            module.addInputOutputNodes();
-            module.loadAndPlay();
-            // the current scene add the module and hide the loading page
-            Utilitary.currentScene.addModule(module);
-            if (!Utilitary.currentScene.isInitLoading) {
-                Utilitary.hideFullPageLoading()
-            }
-        }
+        // else if (moduleJson.moduleType === "midi_reader"){
+        //     let module: ModuleMIDIReader = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX,
+        //         this.tempModuleY, this.tempModuleName, 
+        //         document.getElementById("modules"), 
+        //         (module) => { Utilitary.currentScene.removeModule(module) });
+        //     module.setFaustInterfaceControles();
+        //     module.createFaustInterface();
+        //     module.addInputOutputNodes();
+        //     module.loadAndPlay();
+        //     // the current scene add the module and hide the loading page
+        //     Utilitary.currentScene.addModule(module);
+        //     if (!Utilitary.currentScene.isInitLoading) {
+        //         Utilitary.hideFullPageLoading()
+        //     }
+        // }
 
         else if (moduleJson.moduleType === "CompositionModule"){
             //create new module
@@ -554,7 +554,7 @@ class App {
     checkRealWindowSize() {
 
         if (window.scrollX > 0) {
-            console.log(document.getElementsByTagName("html")[0]);
+            //console.log(document.getElementsByTagName("html")[0]);
             document.getElementsByTagName("html")[0].style.width = window.innerWidth + window.scrollX + "px";
             document.getElementById("svgCanvas").style.width = window.innerWidth + window.scrollX + "px";
             document.getElementById("menuContainer").style.width = window.innerWidth + window.scrollX + "px";

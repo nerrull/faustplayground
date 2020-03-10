@@ -36,9 +36,11 @@ class Replayer {
 	timeWarp: number;
 	bpmOverride: boolean;
 	trackStates : TrackState[];
-	midiFile;
+	midiFile:any;
+	filename : string;
 
-	constructor(midiFile, timeWarp, eventProcessor, bpm){
+	constructor(midiFile, timeWarp, eventProcessor, bpm, filename){
+		this.filename = filename;
 		this.midiFile = midiFile;
 		this.trackStates = [];
 		this.beatsPerMinute = bpm ? bpm : 120;
@@ -70,6 +72,16 @@ class Replayer {
 		if (midiEvent) {
 			while (midiEvent) { midiEvent=  this.processNext(midiEvent);}
 		}
+
+		var measurePosition = this.currentBeat % 4.0;
+		if (measurePosition!=0.0){
+			var diff = 4.0 - measurePosition;
+			console.log(`padding with ${diff} beats`);
+			this.currentBeat +=diff;
+			var dummyEvent = this.temporal[this.temporal.length -1].event;
+			this.temporal.push( {"event":dummyEvent, "time": 0, "beatOffset": diff, "beat": this.currentBeat});
+
+		}
 	};
 
 	processNext(midiEvent : ReplayerMidiEvent) :ReplayerMidiEvent {
@@ -80,7 +92,8 @@ class Replayer {
 		///
 		var beatsToGenerate = 0;
 		var secondsToGenerate = 0;
-		if (midiEvent.ticksToEvent > 0) {
+		//some wierd messages have duration of 1 tick
+		if (midiEvent.ticksToEvent > 1) {
 			beatsToGenerate = midiEvent.ticksToEvent / this.ticksPerBeat;
 			secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
 		}

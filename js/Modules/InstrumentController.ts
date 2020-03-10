@@ -1,12 +1,19 @@
+/// <reference path="../midi/MidiManager.ts"/>
+
 
 //Todo, delete callback targets on cable deletion
 class InstrumentController{
     name: string;
-    movementMidiControllers : {[id:number] : MIDIManager[]};
+    //Dict of loaded midi files
+    midiControllers : {[id:string] : MIDIManager};
+
+    movementMidiFiles : {[id:number] : string[]};
+    movementProbabilities : {[id:number] : number[]};
+
     fileLoaded : boolean;
     numbars : number;
-    currentMovement : number ;
-    currentController : number;
+    mIdx : number ;
+    pIdx : number;
     connectors : Connector[];
     isPlaying :boolean;
     callbackTargets : {[patchID:string] : Function};   
@@ -15,14 +22,17 @@ class InstrumentController{
     constructor(name:string, n_movements:number){
         this.name = name;
         this.fileLoaded = false;
-        this.movementMidiControllers ={}// {number: MIDIManager[]}
-        this.currentMovement = 0;
-        this.currentController = 0;
+        this.movementMidiFiles ={}// {number: MIDIManager[]}
+        this.midiControllers = {}
+        this.movementProbabilities = {};
+        this.mIdx = 0;
+        this.pIdx = 0;
         this.isPlaying = false;
         this.callbackTargets ={};
         this.connectors = [];
         for(let i =0; i <n_movements; i++){
-            this.movementMidiControllers[i] = []
+            this.movementMidiFiles[i] = []
+            this.movementProbabilities[i] = []
         }
     }
     addMidiCallback(c: Connector, cb:Function){
@@ -49,11 +59,19 @@ class InstrumentController{
         
     }
 
+    loadMidi(file, movement, prob){
+        console.log(`${this.name} - loading ${file}`)
 
-    loadMidi(file, movement){
+        this.movementMidiFiles[movement].push(file);
+        this.movementProbabilities[movement].push(prob);
+        if (file in this.midiControllers){
+            console.log(`${this.name} - already has midi controller for ${file}`)
+            return;
+        }
         let m = new MIDIManager((midiInfo)=>this.midiCallback(midiInfo));
+        m.instrumentName = this.name;
         m.loadFile(file, (file) =>{this.midiLoaded(file)},null, (file)=> (this.midiLoadFailed(file)))
-        this.movementMidiControllers[movement].push(m);
+        this.midiControllers[file] = m;
     }
     
     midiLoaded(filename:string):void{
@@ -66,54 +84,135 @@ class InstrumentController{
         this.fileLoaded =false;
     }
 
-    readMidi(){
-        this.movementMidiControllers[this.currentMovement][this.currentController].readMidi();
+    readMidi(globalBeat:number, globalBeatTime:number, BPM: number){
+        this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]]
+            .scheduleNextMidiEvents(globalBeat, globalBeatTime, BPM);
     }
 
     play():void{
-        console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`)
-        let movementLength = this.movementMidiControllers[this.currentMovement].length;
+
+        let movementLength = this.movementMidiFiles[this.mIdx].length;
         if (movementLength >0){
-            if (this.currentController >=movementLength||this.currentController<0){
-                this.currentController =0;
+            if (this.pIdx >=movementLength||this.pIdx<0){
+                this.pIdx =0;
             }
-            
-            this.isPlaying = this.movementMidiControllers[this.currentMovement][this.currentController].start();;
+            let midifile  =this.movementMidiFiles[this.mIdx][this.pIdx];
+            console.log(`${this.name} starting playback of movement ${this.mIdx} -${this.pIdx} - ${midifile}`)
+            this.isPlaying =  this.midiControllers[midifile].start(0);
         }
     }
 
-    setBPM(bpm){
-        for(let key of Object.keys(this.movementMidiControllers)){  
-            for (let c of this.movementMidiControllers[key]){
-                c.setBPM(bpm)
-            }
-        }
+    playMovement(movement:number, startBeat:number ):void{
+        //stop previous piece
+        if (this.isPlaying) this.stop(true);   
+
+        //Set movement index and reset controller index
+        this.mIdx = movement;
+        this.pIdx =0;
+
+        //If no pieces for this movement return
+        if (this.movementMidiFiles[this.mIdx].length ==0) return;
+
+        let midifile  =this.movementMidiFiles[this.mIdx][this.pIdx];
+        console.log(`${this.name} starting playback of movement ${this.mIdx} -${this.pIdx} - ${midifile} at  beat ${startBeat}`)
+        this.isPlaying =  this.midiControllers[midifile].start(startBeat);
+        
+    }
+    
+    playPiece(piece:number, startBeat:number):void{
+        //stop previous playing piece
+        if (this.isPlaying) this.stop();
+
+        //If no pieces for this movement return
+        let movementLength =this.movementMidiFiles[this.mIdx].length;
+        if (movementLength==0) return;
+
+        //clamp piece index
+        this.pIdx = Math.max(Math.min(piece, movementLength),0);
+
+        //Play next piece
+        let midiFile = this.movementMidiFiles[this.mIdx][this.pIdx];
+        console.log(`${this.name} - movement ${this.mIdx} - playing piece ${piece} (${midiFile}) - at beat ${startBeat}`);
+        let c =  this.midiControllers[midiFile];
+        this.isPlaying =c.start(startBeat);
     }
 
     getBeat():number{
-        return this.movementMidiControllers[this.currentMovement][this.currentController].currentBeat;
+        return this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]].currentBeat;
     }
 
     getBeatTime():number{
         if (this.isPlaying)
-            return this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime;
+            return this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]].queuedTime;
         return -1
     }
 
     setBeatTime(bt):void{
         if (this.isPlaying)
-            this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime = bt;
+        this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]] = bt;
     }
     
-    stop():void{
-        if (this.movementMidiControllers[this.currentMovement] &&  this.movementMidiControllers[this.currentMovement][this.currentController]){
-            this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+    stop(resetLoops:boolean  = false ):void{
+        if (this.movementMidiFiles[this.mIdx] &&  this.movementMidiFiles[this.mIdx][this.pIdx]){
+            let midifile =this.movementMidiFiles[this.mIdx][this.pIdx];
+            console.log(`${this.name} - movement ${this.mIdx} - stopping piece ${this.pIdx} (${midifile}) `)
+            this.midiControllers[midifile].stop(resetLoops);
         }
         this.isPlaying = false;
     }
     
     loopCallback():void{
-        this.currentController +=1;
+        this.pIdx +=1;
+        this.pIdx = this.pIdx% Object.keys(this.movementMidiFiles).length;
         this.play();
     }
+
+    isAboutToLoop():boolean{
+        let c = this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]];
+        return c.isLooping;
+    }
+
+    getNextRandomPiece(currentBeat:number):void {
+        var probs : number[] = this.movementProbabilities[this.mIdx];
+        var total_prob = probs.reduce(getSum, 0);
+        var rand = Math.random()*total_prob;
+        var sum = 0;
+        var nextPiece =0;
+
+        while(sum <= rand && nextPiece< probs.length){
+            sum += probs[nextPiece];
+            nextPiece++;
+        }
+        nextPiece -=1;
+
+        var startBeat = currentBeat + this.getBeatOffsetFromPieceEnd(currentBeat);
+
+        if (this.pIdx == nextPiece){
+            console.log(`${this.name}- Next piece is same as current piece - just call start to set new startbeat`)
+            let midiFile = this.movementMidiFiles[this.mIdx][this.pIdx];
+            this.midiControllers[midiFile].start(startBeat);
+        }
+        else{
+            this.playPiece(nextPiece, startBeat);
+        }
+    }
+
+    getBeatOffsetFromPieceEnd(currentBeat :number):number {
+        if(!this.isPlaying) return 0;
+        let c= this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]];
+        return c.getBeatOffsetFromEnd(currentBeat);
+    }
+
+    getNumberOfLoops():number{
+        var numloops = 0;
+        for (let file  of this.movementMidiFiles[this.mIdx]){
+            numloops += this.midiControllers[file].numLoops;
+        }
+        return numloops;
+    }
 } 
+    
+function getSum(total, num) {
+    return total + num;
+  }
+  

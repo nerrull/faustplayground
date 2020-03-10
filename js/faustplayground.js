@@ -499,6 +499,9 @@ class Utilitary {
                 indexes.push(i);
         return indexes;
     }
+    static floatP(x) {
+        return x.toPrecision(4);
+    }
 }
 Utilitary.messageRessource = new Ressources();
 Utilitary.idX = 0;
@@ -695,9 +698,13 @@ class Drag {
         var x, y;
         if (destination && destination != sourceModule && this.isConnectionUnique(sourceModule, destination) && resultIsConnectionValid) {
             // Get the position of the originating connector with respect to the page.
-            var offset;
-            if (this.isParameter)
-                offset = target.parentNode;
+            var offset = target;
+            if (this.isParameter) {
+                if (target.classList.contains("node-button"))
+                    offset = target.parentNode;
+                else
+                    offset = target;
+            }
             else if (!this.isOriginInput)
                 offset = destination.moduleView.getInputNode();
             else
@@ -754,7 +761,7 @@ class Drag {
                         console.log(`Trying to connect ${fSrc.getType()}-${this.instrument_id} to ${fDst.moduleFaust.fName}`);
                         connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
                         dst.moduleFaust.addMidiInputConnection(connector);
-                        src.moduleFaust.addMidiInputConnection(connector);
+                        src.moduleFaust.addMidiOutputConnection(connector);
                         connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
                         this.connector.connectorShape.onclick = (event) => { connector.deleteMidiConnection(event, this); };
                         return;
@@ -1746,8 +1753,8 @@ class GraphicalModule {
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
-        // var connector: Connector = new Connector()
-        // connector.disconnectModule(this);
+        var connector = new Connector();
+        connector.disconnectModule(this);
         this.deleteFaustInterface();
         // Then delete the visual element
         if (this.moduleView) {
@@ -1951,6 +1958,9 @@ class GraphicalModule {
     getInputMidiConnections() {
         return this.moduleFaust.mInputConnections;
     }
+    getOutputMidiConnections() {
+        return this.moduleFaust.mOutputConnections;
+    }
 }
 GraphicalModule.isNodesModuleUnstyle = true;
 /*				MODULECLASS.JS
@@ -1980,8 +1990,6 @@ class ModuleClass extends GraphicalModule {
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
-        var connector = new Connector();
-        connector.disconnectModule(this);
         super.deleteModule();
         this.deleteDSP(this.moduleFaust.fDSP);
         this.moduleFaust.fDSP = null;
@@ -2180,975 +2188,12 @@ class ModuleClass extends GraphicalModule {
         }
     }
 }
-/* Wrapper for accessing strings through sequential reads */
-function Stream(str) {
-    var position = 0;
-    function read(length) {
-        var result = str.substr(position, length);
-        position += length;
-        return result;
-    }
-    /* read a big-endian 32-bit integer */
-    function readInt32() {
-        var result = ((str.charCodeAt(position) << 24)
-            + (str.charCodeAt(position + 1) << 16)
-            + (str.charCodeAt(position + 2) << 8)
-            + str.charCodeAt(position + 3));
-        position += 4;
-        return result;
-    }
-    /* read a big-endian 16-bit integer */
-    function readInt16() {
-        var result = ((str.charCodeAt(position) << 8)
-            + str.charCodeAt(position + 1));
-        position += 2;
-        return result;
-    }
-    /* read an 8-bit integer */
-    function readInt8(signed) {
-        var result = str.charCodeAt(position);
-        if (signed && result > 127)
-            result -= 256;
-        position += 1;
-        return result;
-    }
-    function eof() {
-        return position >= str.length;
-    }
-    /* read a MIDI-style variable-length integer
-        (big-endian value in groups of 7 bits,
-        with top bit set to signify that another byte follows)
-    */
-    function readVarInt() {
-        var result = 0;
-        while (true) {
-            var b = readInt8(false);
-            if (b & 0x80) {
-                result += (b & 0x7f);
-                result <<= 7;
-            }
-            else {
-                /* b is the last byte */
-                return result + b;
-            }
-        }
-    }
-    return {
-        'eof': eof,
-        'read': read,
-        'readInt32': readInt32,
-        'readInt16': readInt16,
-        'readInt8': readInt8,
-        'readVarInt': readVarInt
-    };
-}
-/*
-class to parse the .mid file format
-(depends on stream.js)
-*/
-///
-/// <reference path="./stream.ts" />
-class MidiEvent {
-}
-;
-function MidiFile(data) {
-    function readChunk(stream) {
-        var id = stream.read(4);
-        var length = stream.readInt32();
-        return {
-            'id': id,
-            'length': length,
-            'data': stream.read(length)
-        };
-    }
-    var lastEventTypeByte;
-    function readEvent(stream) {
-        var event = new MidiEvent();
-        event.deltaTime = stream.readVarInt();
-        var eventTypeByte = stream.readInt8();
-        if ((eventTypeByte & 0xf0) == 0xf0) {
-            /* system / meta event */
-            if (eventTypeByte == 0xff) {
-                /* meta event */
-                event.type = 'meta';
-                var subtypeByte = stream.readInt8();
-                var length = stream.readVarInt();
-                switch (subtypeByte) {
-                    case 0x00:
-                        event.subtype = 'sequenceNumber';
-                        if (length != 2)
-                            throw "Expected length for sequenceNumber event is 2, got " + length;
-                        event.number = stream.readInt16();
-                        return event;
-                    case 0x01:
-                        event.subtype = 'text';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x02:
-                        event.subtype = 'copyrightNotice';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x03:
-                        event.subtype = 'trackName';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x04:
-                        event.subtype = 'instrumentName';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x05:
-                        event.subtype = 'lyrics';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x06:
-                        event.subtype = 'marker';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x07:
-                        event.subtype = 'cuePoint';
-                        event.text = stream.read(length);
-                        return event;
-                    case 0x20:
-                        event.subtype = 'midiChannelPrefix';
-                        if (length != 1)
-                            throw "Expected length for midiChannelPrefix event is 1, got " + length;
-                        event.channel = stream.readInt8();
-                        return event;
-                    case 0x2f:
-                        event.subtype = 'endOfTrack';
-                        if (length != 0)
-                            throw "Expected length for endOfTrack event is 0, got " + length;
-                        return event;
-                    case 0x51:
-                        event.subtype = 'setTempo';
-                        if (length != 3)
-                            throw "Expected length for setTempo event is 3, got " + length;
-                        event.microsecondsPerBeat = ((stream.readInt8() << 16)
-                            + (stream.readInt8() << 8)
-                            + stream.readInt8());
-                        return event;
-                    case 0x54:
-                        event.subtype = 'smpteOffset';
-                        if (length != 5)
-                            throw "Expected length for smpteOffset event is 5, got " + length;
-                        var hourByte = stream.readInt8();
-                        event.frameRate = {
-                            0x00: 24, 0x20: 25, 0x40: 29, 0x60: 30
-                        }[hourByte & 0x60];
-                        event.hour = hourByte & 0x1f;
-                        event.min = stream.readInt8();
-                        event.sec = stream.readInt8();
-                        event.frame = stream.readInt8();
-                        event.subframe = stream.readInt8();
-                        return event;
-                    case 0x58:
-                        event.subtype = 'timeSignature';
-                        if (length != 4)
-                            throw "Expected length for timeSignature event is 4, got " + length;
-                        event.numerator = stream.readInt8();
-                        event.denominator = Math.pow(2, stream.readInt8());
-                        event.metronome = stream.readInt8();
-                        event.thirtyseconds = stream.readInt8();
-                        return event;
-                    case 0x59:
-                        event.subtype = 'keySignature';
-                        if (length != 2)
-                            throw "Expected length for keySignature event is 2, got " + length;
-                        event.key = stream.readInt8(true);
-                        event.scale = stream.readInt8();
-                        return event;
-                    case 0x7f:
-                        event.subtype = 'sequencerSpecific';
-                        event.data = stream.read(length);
-                        return event;
-                    default:
-                        // console.log("Unrecognised meta event subtype: " + subtypeByte);
-                        event.subtype = 'unknown';
-                        event.data = stream.read(length);
-                        return event;
-                }
-                event.data = stream.read(length);
-                return event;
-            }
-            else if (eventTypeByte == 0xf0) {
-                event.type = 'sysEx';
-                var length = stream.readVarInt();
-                event.data = stream.read(length);
-                return event;
-            }
-            else if (eventTypeByte == 0xf7) {
-                event.type = 'dividedSysEx';
-                var length = stream.readVarInt();
-                event.data = stream.read(length);
-                return event;
-            }
-            else {
-                throw "Unrecognised MIDI event type byte: " + eventTypeByte;
-            }
-        }
-        else {
-            /* channel event */
-            var param1;
-            if ((eventTypeByte & 0x80) == 0) {
-                /* running status - reuse lastEventTypeByte as the event type.
-                    eventTypeByte is actually the first parameter
-                */
-                param1 = eventTypeByte;
-                eventTypeByte = lastEventTypeByte;
-            }
-            else {
-                param1 = stream.readInt8();
-                lastEventTypeByte = eventTypeByte;
-            }
-            var eventType = eventTypeByte >> 4;
-            event.channel = eventTypeByte & 0x0f;
-            event.type = 'channel';
-            switch (eventType) {
-                case 0x08:
-                    event.subtype = 'noteOff';
-                    event.noteNumber = param1;
-                    event.velocity = stream.readInt8();
-                    return event;
-                case 0x09:
-                    event.noteNumber = param1;
-                    event.velocity = stream.readInt8();
-                    if (event.velocity == 0) {
-                        event.subtype = 'noteOff';
-                    }
-                    else {
-                        event.subtype = 'noteOn';
-                    }
-                    return event;
-                case 0x0a:
-                    event.subtype = 'noteAftertouch';
-                    event.noteNumber = param1;
-                    event.amount = stream.readInt8();
-                    return event;
-                case 0x0b:
-                    event.subtype = 'controller';
-                    event.controllerType = param1;
-                    event.value = stream.readInt8();
-                    return event;
-                case 0x0c:
-                    event.subtype = 'programChange';
-                    event.programNumber = param1;
-                    return event;
-                case 0x0d:
-                    event.subtype = 'channelAftertouch';
-                    event.amount = param1;
-                    return event;
-                case 0x0e:
-                    event.subtype = 'pitchBend';
-                    event.value = param1 + (stream.readInt8() << 7);
-                    return event;
-                default:
-                    throw "Unrecognised MIDI event type: " + eventType;
-                /*
-                console.log("Unrecognised MIDI event type: " + eventType);
-                stream.readInt8();
-                event.subtype = 'unknown';
-                return event;
-                */
-            }
-        }
-    }
-    var stream = Stream(data);
-    var headerChunk = readChunk(stream);
-    if (headerChunk.id != 'MThd' || headerChunk.length != 6) {
-        throw "Bad .mid file - header not found";
-    }
-    var headerStream = Stream(headerChunk.data);
-    var formatType = headerStream.readInt16();
-    var trackCount = headerStream.readInt16();
-    var timeDivision = headerStream.readInt16();
-    if (timeDivision & 0x8000) {
-        throw "Expressing time division in SMTPE frames is not supported yet";
-    }
-    else {
-        var ticksPerBeat = timeDivision;
-    }
-    var header = {
-        'formatType': formatType,
-        'trackCount': trackCount,
-        'ticksPerBeat': ticksPerBeat
-    };
-    var tracks = [];
-    for (var i = 0; i < header.trackCount; i++) {
-        tracks[i] = [];
-        var trackChunk = readChunk(stream);
-        if (trackChunk.id != 'MTrk') {
-            throw "Unexpected chunk - expected MTrk, got " + trackChunk.id;
-        }
-        var trackStream = Stream(trackChunk.data);
-        while (!trackStream.eof()) {
-            var event = readEvent(trackStream);
-            tracks[i].push(event);
-            //console.log(event);
-        }
-    }
-    return {
-        'header': header,
-        'tracks': tracks
-    };
-}
-/// <reference path="./midifile.ts" />
-function clone(o) {
-    if (typeof o != 'object')
-        return (o);
-    if (o == null)
-        return (o);
-    var ret = (typeof o.length == 'number') ? [] : {};
-    for (var key in o)
-        ret[key] = clone(o[key]);
-    return ret;
-}
-;
-class ReplayerMidiEvent {
-}
-;
-class TrackState {
-}
-;
-class TemporalMidi {
-}
-;
-class Replayer {
-    constructor(midiFile, timeWarp, eventProcessor, bpm) {
-        this.midiEvent = [];
-        this.temporal = [];
-        this.currentBeat = 0;
-        this.midiFile = midiFile;
-        this.trackStates = [];
-        this.beatsPerMinute = bpm ? bpm : 120;
-        this.bpmOverride = bpm ? true : false;
-        this.ticksPerBeat = midiFile.header.ticksPerBeat;
-        for (var i = 0; i < midiFile.tracks.length; i++) {
-            this.trackStates[i] = {
-                'nextEventIndex': 0,
-                'ticksToNextEvent': (midiFile.tracks[i].length ?
-                    midiFile.tracks[i][0].deltaTime :
-                    null)
-            };
-        }
-        this.processEvents();
-    }
-    getData() {
-        return clone(this.temporal);
-    }
-    processEvents() {
-        var midiEvent = this.getNextEvent();
-        if (midiEvent) {
-            while (midiEvent) {
-                midiEvent = this.processNext(midiEvent);
-            }
-        }
-    }
-    ;
-    processNext(midiEvent) {
-        if (!this.bpmOverride && midiEvent.event.type == "meta" && midiEvent.event.subtype == "setTempo") {
-            // tempo change events can occur anywhere in the middle and affect events that follow
-            var beatsPerMinute = 60000000 / midiEvent.event.microsecondsPerBeat;
-        }
-        ///
-        var beatsToGenerate = 0;
-        var secondsToGenerate = 0;
-        if (midiEvent.ticksToEvent > 0) {
-            beatsToGenerate = midiEvent.ticksToEvent / this.ticksPerBeat;
-            secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
-        }
-        this.currentBeat = this.currentBeat + beatsToGenerate;
-        ///
-        var time = (secondsToGenerate * 1000 * this.timeWarp) || 0;
-        this.temporal.push({ "event": midiEvent, "time": time, "beatOffset": beatsToGenerate, "beat": this.currentBeat });
-        return this.getNextEvent();
-    }
-    ;
-    getNextEvent() {
-        var ticksToNextEvent = null;
-        var nextEventTrack = null;
-        var nextEventIndex = null;
-        for (var i = 0; i < this.trackStates.length; i++) {
-            if (this.trackStates[i].ticksToNextEvent != null
-                && (ticksToNextEvent == null || this.trackStates[i].ticksToNextEvent < ticksToNextEvent)) {
-                ticksToNextEvent = this.trackStates[i].ticksToNextEvent;
-                nextEventTrack = i;
-                nextEventIndex = this.trackStates[i].nextEventIndex;
-            }
-        }
-        if (nextEventTrack != null) {
-            /* consume event from that track */
-            var nextEvent = this.midiFile.tracks[nextEventTrack][nextEventIndex];
-            if (this.midiFile.tracks[nextEventTrack][nextEventIndex + 1]) {
-                this.trackStates[nextEventTrack].ticksToNextEvent += this.midiFile.tracks[nextEventTrack][nextEventIndex + 1].deltaTime;
-            }
-            else {
-                this.trackStates[nextEventTrack].ticksToNextEvent = null;
-            }
-            this.trackStates[nextEventTrack].nextEventIndex += 1;
-            /* advance timings on all tracks by ticksToNextEvent */
-            for (var i = 0; i < this.trackStates.length; i++) {
-                if (this.trackStates[i].ticksToNextEvent != null) {
-                    this.trackStates[i].ticksToNextEvent -= ticksToNextEvent;
-                }
-            }
-            return {
-                "ticksToEvent": ticksToNextEvent,
-                "event": nextEvent,
-                "track": nextEventTrack
-            };
-        }
-        else {
-            return null;
-        }
-    }
-}
-;
-/*
-Adapted from Midi player by mudcube
-----------------------------------------------------------
-MIDI.Player : 0.3.1 : 2015-03-26
-
-----------------------------------------------------------
-https://github.com/mudcube/MIDI.js
-----------------------------------------------------------
-*/
-/// <reference path="./jasmid/replayer.ts" />
-/// <reference path="./jasmid/midifile.ts" />
-function clamp(min, max, value) {
-    return (value < min) ? min : ((value > max) ? max : value);
-}
-;
-class MIDIManager {
-    constructor(midiCallback) {
-        this.api = "webaudio";
-        this.currentTime = 0;
-        this.endTime = 0;
-        this.restart = 0;
-        this.playing = false;
-        this.timeWarp = 1;
-        this.startDelay = 0;
-        this.BPM = 120;
-        this.MIDIOffset = 0;
-        this.readMessageMinInterval = 200; //200 ms
-        this.eventQueue = []; // hold events to be triggered
-        this.queuedTime = 0; // 
-        this.startTime = 0; // to measure time elapse
-        this.noteRegistrar = {}; // get event for requested note
-        this.onMidiEvent = midiCallback;
-        this.currentMidiMessageIndex = 0;
-        this.cacheLoaded = false;
-        this.currentBeat = 0;
-        this.scheduledNotes = [];
-    }
-    setBPM(bpm) {
-        this.BPM = bpm;
-        //update queued time to match new BPM
-        // if (this.scheduledNotes.length >0){
-        //     let note_info : ScheduledNoteData;
-        //     for (note_info of this.scheduledNotes){
-        //         this.queuedTime -=note_info.scheduled_delay
-        //         this.queuedTime += AudioUtils.beatsToSeconds(note_info.beat_duration, this.BPM);
-        //     }
-        // }
-    }
-    start(onsuccess = null) {
-        this.stop();
-        console.log("Starting midi playback of " + this.filename);
-        //this.currentTime = clamp(0, this.getLength(), this.currentTime);
-        this.playing = true;
-        return this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
-    }
-    ;
-    resume(onsuccess) {
-        if (this.currentTime < -1) {
-            this.currentTime = -1;
-        }
-        this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
-    }
-    ;
-    pause() {
-        console.log("Pausing midi playback of " + this.filename);
-        var tmp = this.restart;
-        this.stopAudio();
-        this.restart = tmp;
-    }
-    ;
-    stop() {
-        console.log("Stopping midi playback of " + this.filename);
-        this.stopAudio();
-        this.scheduledNotes = [];
-        this.restart = 0;
-        this.currentTime = 0;
-        this.currentMidiMessageIndex = 0;
-    }
-    ;
-    addListener(listenerCallback) {
-        this.onMidiEvent = listenerCallback;
-    }
-    ;
-    removeListener() {
-        this.onMidiEvent = undefined;
-    }
-    ;
-    loadMidiFile(data, onsuccess, onprogress, onerror) {
-        try {
-            this.currentData = data;
-            this.replayer = new Replayer(MidiFile(this.currentData), this.timeWarp, null, this.BPM);
-            this.data = this.replayer.getData();
-            this.endTime = this.getLength();
-            //onsuccess()
-            ///
-            // MIDI.loadPlugin({
-            //     // 			instruments: midi.getFileInstruments(),
-            //     onsuccess: onsuccess,
-            //     onprogress: onprogress,
-            //     onerror: onerror
-            // });
-        }
-        catch (event) {
-            onerror && onerror(event);
-        }
-    }
-    ;
-    loadFile(file, onsuccess, onprogress, onerror) {
-        this.filename = file;
-        this.stop();
-        if (file.indexOf('base64,') !== -1) {
-            var data = window.atob(file.split(',')[1]);
-            onsuccess(file);
-            this.loadMidiFile(data, onsuccess, onprogress, onerror);
-        }
-        else {
-            var fetch = new XMLHttpRequest();
-            var self = this;
-            fetch.open('GET', file);
-            fetch.overrideMimeType('text/plain; charset=x-user-defined');
-            fetch.onreadystatechange = function () {
-                if (this.readyState === 4) {
-                    if (this.status === 200) {
-                        var t = this.responseText || '';
-                        var ff = [];
-                        var mx = t.length;
-                        var scc = String.fromCharCode;
-                        for (var z = 0; z < mx; z++) {
-                            ff[z] = scc(t.charCodeAt(z) & 255);
-                        }
-                        ///
-                        var data = ff.join('');
-                        self.loadMidiFile(data, onsuccess, onprogress, onerror);
-                    }
-                    else {
-                        onerror(file) && onerror('Unable to load MIDI file');
-                    }
-                }
-            };
-            fetch.send();
-        }
-    }
-    ;
-    // getFileInstruments():void {
-    //     var instruments = {};
-    //     var programs = {};
-    //     for (var n = 0; n < this.data.length; n ++) {
-    //         var event = this.data[n][0].event;
-    //         if (event.type !== 'channel') {
-    //             continue;
-    //         }
-    //         var channel = event.channel;
-    //         switch(event.subtype) {
-    //             case 'controller':
-    //             //				console.log(event.channel, MIDI.defineControl[event.controllerType], event.value);
-    //             break;
-    //             case 'programChange':
-    //             programs[channel] = event.programNumber;
-    //             break;
-    //             case 'noteOn':
-    //             var program = programs[channel];
-    //             var gm = MIDI.GM.byId[isFinite(program) ? program : channel];
-    //             instruments[gm.id] = true;
-    //             break;
-    //         }
-    //     }
-    //     var ret = [];
-    //     for (var key in instruments) {
-    //         ret.push(key);
-    //     }
-    //     return ret;
-    // };
-    processMidi(data) {
-        // this.scheduledNotes.shift();
-        if (data.message === 128) {
-            delete this.noteRegistrar[data.note];
-        }
-        else {
-            this.noteRegistrar[data.note] = data;
-        }
-        if (this.onMidiEvent) {
-            this.onMidiEvent(data);
-        }
-        this.currentTime = data.currentTime;
-        ///
-        this.eventQueue.shift();
-        ///
-        // if (this.eventQueue.length < 2) {
-        //     this.startAudio(this.queuedTime, true);
-        // } 
-        // else if (this.currentTime > (this.lastReadMessageTime - this.readMessageMinInterval)) { // grab next sequence
-        //     this.startAudio(this.queuedTime, true);
-        // }
-    }
-    scheduleTracking(channel, note, currentTime, endTime, offset, message, velocity) {
-        //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
-        return setTimeout(() => {
-            var data = {
-                channel: channel,
-                note: note,
-                now: currentTime,
-                end: endTime,
-                message: message,
-                velocity: velocity
-            };
-            this.processMidi(data);
-        }, (currentTime - offset) * 1000);
-    }
-    ;
-    //read midi data and schedule note events
-    readMidi() {
-        var note;
-        var offset = 0; //keeps track of where we are relative to current timestep
-        var ctx = this.getContext();
-        var messages = 0;
-        //var length = this.data.length;
-        //var interval = this.eventQueue[0] && this.eventQueue[0].interval || 0;
-        //time relative to start
-        this.currentTime = ctx.currentTime - this.startTime;
-        var offset = this.queuedTime;
-        //console.log(`1. Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
-        while (this.queuedTime <= this.currentTime + this.readMessageMinInterval * 2 / 1000.) {
-            var obj = this.data[this.currentMidiMessageIndex];
-            //var midi_time = obj.time;
-            var midi_beats = obj.beatOffset;
-            var note_s = AudioUtils.beatsToSeconds(midi_beats, this.BPM);
-            this.currentBeat += midi_beats; // AudioUtils.floorBPM(midi_beats);
-            this.currentMidiMessageIndex += 1;
-            if (this.currentMidiMessageIndex >= this.data.length) {
-                console.log(`${this.filename} LOOPING`);
-                this.currentBeat = 0;
-            }
-            this.currentMidiMessageIndex = this.currentMidiMessageIndex % this.data.length;
-            //update queued time 
-            this.queuedTime += note_s;
-            var event = obj.event.event;
-            //Skip notes we were too late to read
-            if (this.queuedTime < this.currentTime) {
-                console.log(`missed midi message ${event.subtype}`);
-                offset = this.queuedTime;
-                continue;
-            }
-            //update current time
-            //currentTime = this.queuedTime - offset;
-            if (event.type !== 'channel') {
-                console.log(`dropped midi message ${event.subtype}`);
-                continue;
-            }
-            var channelId = event.channel;
-            //var channel = MIDI.channels[channelId];
-            // var delay = ctx.currentTime + ((currentTime + foffset + this.startDelay) / 1000);
-            var queueTime = this.queuedTime - offset + this.startDelay;
-            offset = 0;
-            var eventTime = this.queuedTime - this.currentTime;
-            //var note_data = {queue_time: this.queuedTime, beat_duration:midi_beats, scheduled_delay:eventTime };
-            switch (event.subtype) {
-                case 'noteOn':
-                    //if (channel.mute) break;
-                    note = event.noteNumber - (this.MIDIOffset || 0);
-                    // this.scheduledNotes.push(note_data);
-                    this.eventQueue.push({
-                        event: event,
-                        time: queueTime,
-                        //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
-                        interval: this.scheduleTracking(channelId, note, eventTime, this.endTime, offset, 144, event.velocity)
-                    });
-                    messages++;
-                    break;
-                case 'noteOff':
-                    //if (channel.mute) break;
-                    // note = event.noteNumber - (this.MIDIOffset || 0);
-                    // this.eventQueue.push({
-                    //     event: event,
-                    //     time: queueTime,
-                    //     //source: MIDI.noteOff(channelId, event.noteNumber, delay),
-                    //     interval: this.scheduleTracking(channelId, note, eventTime, this.endTime, offset , 128, 0)
-                    // });
-                    break;
-                case 'controller':
-                    // MIDI.setController(channelId, event.controllerType, event.value, delay);
-                    break;
-                case 'programChange':
-                    // MIDI.programChange(channelId, event.programNumber, delay);
-                    break;
-                case 'pitchBend':
-                    // MIDI.pitchBend(channelId, event.value, delay);
-                    break;
-                default:
-                    break;
-            }
-        }
-        //console.log(`${this.filename} Start time ${this.startTime}, play time ${this.currentTime}, loop time ${this.queuedTime}  `)
-    }
-    // Playing the audio
-    startAudio(currentTime, fromCache, onsuccess = null) {
-        if (!this.replayer) {
-            return;
-        }
-        if (!fromCache) {
-            if (typeof currentTime === 'undefined') {
-                currentTime = this.restart;
-            }
-            ///
-            this.playing && this.stopAudio();
-            this.playing = true;
-            this.data = this.replayer.getData();
-            this.endTime = this.getLength();
-            this.cacheLoaded = true;
-        }
-        if (this.endTime < 4) {
-            console.log(`${this.filename} is too short, aborting`);
-            this.stop();
-            return false;
-        }
-        this.startTime = this.getContext().currentTime;
-        this.queuedTime = 0;
-        this.currentBeat = 0;
-        return true;
-        // ///
-        // onsuccess && onsuccess(this.eventQueue); 
-    }
-    ;
-    stopAudio() {
-        var ctx = this.getContext();
-        this.playing = false;
-        this.currentMidiMessageIndex = 0;
-        this.restart += (ctx.currentTime - this.startTime) * 1000;
-        // stop the audio, and intervals
-        while (this.eventQueue.length) {
-            var o = this.eventQueue.pop();
-            window.clearInterval(o.interval);
-            if (!o.source)
-                continue; // is not webaudio
-            o.source.disconnect(0);
-        }
-        // run callback to cancel any notes still playing
-        for (var key in this.noteRegistrar) {
-            var o = this.noteRegistrar[key];
-            if (this.noteRegistrar[key].message === 144 && this.onMidiEvent) {
-                this.onMidiEvent({
-                    channel: o.channel,
-                    note: o.note,
-                    now: o.now,
-                    end: o.end,
-                    message: 128,
-                    velocity: o.velocity
-                });
-            }
-        }
-        // reset noteRegistrar
-        this.noteRegistrar = {};
-    }
-    ;
-    getContext() {
-        return Utilitary.audioContext;
-    }
-    ;
-    getLength() {
-        var data = this.data;
-        var length = data.length;
-        var totalBeats = data[length - 1].beat;
-        console.log(`Midi file length is ${totalBeats} beats long`);
-        return totalBeats;
-    }
-    ;
-    getBeats() {
-        var data = this.data;
-        var length = data.length;
-        var totalTime = 0.5;
-        for (var n = 0; n < length; n++) {
-            totalTime += data[n][1];
-        }
-        return totalTime;
-    }
-    ;
-    beatsToSeconds(beats) {
-        return beats / (this.BPM / 60);
-    }
-}
-;
-/*				ModuleMIDIReader.JS
-    HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
-
-*/
-/// <reference path="../midi/MIDIManager.ts"/>
-/// <reference path="../Dragging.ts"/>
-/// <reference path="../CodeFaustParser.ts"/>
-/// <reference path="../Connect.ts"/>
-/// <reference path="../Modules/FaustInterface.ts"/>
-/// <reference path="../Messages.ts"/>
-/// <reference path="ModuleFaust.ts"/>
-/// <reference path="ModuleView.ts"/>
-/// <reference path="GraphicalModule.ts"/>
-class ModuleMIDIReader extends GraphicalModule {
-    constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack) {
-        super(id, x, y, name, htmlElementModuleContainer);
-        this.fModuleInterfaceParams = {};
-        this.MIDIcontrol = new MIDIManager(this.midiCallback);
-        this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
-        this.eventOpenEditHandler = () => { this.edit(); };
-        this.deleteCallback = removeModuleCallBack;
-        this.typeString = "midi";
-        // var connector: Connector = new Connector();
-        // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
-    }
-    loadAndPlay() {
-        this.MIDIcontrol.loadFile("../../data/midi/Dayung - 1.mid", () => { this.MIDIcontrol.start(); }, null, this.logError);
-    }
-    setMidiCallback(cb) {
-        this.targetMidiCallback = cb;
-        this.MIDIcontrol.onMidiEvent = cb;
-    }
-    midiCallback(midiInfo) {
-        console.log(midiInfo);
-        if (this.targetMidiCallback) {
-            this.targetMidiCallback(midiInfo.channel, midiInfo.pitch, midiInfo.velocity);
-        }
-        //todo: publish + display the midi information 
-    }
-    logError(e) {
-        console.log("Error loading midi file");
-        console.log(e);
-    }
-    /*******************************  PUBLIC METHODS  **********************************/
-    deleteModule() {
-        var connector = new Connector();
-        connector.disconnectMIDIModule(this);
-        super.deleteModule();
-        this.deleteCallback(this);
-    }
-    //--- Load a file containing midi information
-    loadMIDIfile() {
-    }
-    //--- Update MIDI contents in module
-    updateMIDIfile() {
-    }
-    /******************** EDIT SOURCE & RECOMPILE *************************/
-    //OVERRIDE
-    edit() {
-        this.saveInterfaceParams();
-        var event = new CustomEvent("codeeditevent");
-        document.dispatchEvent(event);
-        this.deleteFaustInterface();
-        this.moduleView.textArea.style.display = "block";
-        //this.moduleView.textArea.value = this.MIDIcontrol.;
-        Connector.redrawInputConnections(this, this.drag);
-        Connector.redrawOutputConnections(this, this.drag);
-        this.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "enter.png)";
-        this.moduleView.fEditImg.addEventListener("click", this.eventCloseEditHandler);
-        this.moduleView.fEditImg.addEventListener("touchend", this.eventCloseEditHandler);
-        this.moduleView.fEditImg.removeEventListener("click", this.eventOpenEditHandler);
-        this.moduleView.fEditImg.removeEventListener("touchend", this.eventOpenEditHandler);
-    }
-    //---- Update ModuleClass with new name/code source
-    update(name, code) {
-        var event = new CustomEvent("midiEditEvent");
-        document.dispatchEvent(event);
-        // this.moduleFaust.fTempName = name;
-        // this.moduleFaust.fTempSource = code;
-        //var module: ModuleMIDIReader = this;
-        //this.compileFaust({ name: name, sourceCode: code, x: this.moduleView.x, y: this.moduleView.y});
-    }
-    //---- React to recompilation triggered by click on icon
-    recompileSource(event, module) {
-        // Utilitary.showFullPageLoading();
-        // var dsp_code: string = this.moduleView.textArea.value;
-        // this.moduleView.textArea.style.display = "none";
-        // Connector.redrawOutputConnections(this, this.drag);
-        // Connector.redrawInputConnections(this, this.drag)
-        // module.update(this.moduleView.fTitle.textContent, dsp_code);
-        // module.recallInterfaceParams();
-        // module.moduleView.fEditImg.style.backgroundImage = "url(" + Utilitary.baseImg + "edit.png)";
-        // module.moduleView.fEditImg.addEventListener("click", this.eventOpenEditHandler);
-        // module.moduleView.fEditImg.addEventListener("touchend", this.eventOpenEditHandler);
-        // module.moduleView.fEditImg.removeEventListener("click", this.eventCloseEditHandler);
-        // module.moduleView.fEditImg.removeEventListener("touchend", this.eventCloseEditHandler);
-    }
-    /***************** CREATE/DELETE the DSP Interface ********************/
-    // Fill fInterfaceContainer with the DSP's Interface (--> see FaustInterface.js)
-    //Override
-    // interface Iitem{
-    //     label: string;
-    //     init: string;
-    //     address: string;
-    //     type: string;
-    //     min: string;
-    //     max: string;
-    //     step: string;
-    //     meta: FaustMeta[];
-    // }
-    setFaustInterfaceControles() {
-        //this.moduleView.fTitle.textContent = this.moduleFaust.fName;
-        // var moduleFaustInterface = new FaustInterfaceControler(
-        //     (faustInterface) => { this.interfaceSliderCallback(faustInterface) },
-        //     (adress, value) => { this.setParamValue(adress, value) }
-        //     );
-        this.moduleControles.push(FaustInterfaceControler.addButton("Start", () => { this.MIDIcontrol.start(); }));
-        this.moduleControles.push(FaustInterfaceControler.addButton("Stop", () => { this.MIDIcontrol.stop(); }));
-        this.moduleControles.push(FaustInterfaceControler.addButton("Pause", () => { this.MIDIcontrol.pause(); }));
-        //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
-    }
-    // Delete all FaustInterfaceControler
-    deleteFaustInterface() {
-        super.deleteFaustInterface();
-    }
-    // set DSP value to all FaustInterfaceControlers
-    setOutputValues() {
-        for (var i = 0; i < this.moduleControles.length; i++) {
-            this.setParamValue(this.moduleControles[i].itemParam.address, this.moduleControles[i].value);
-        }
-    }
-    // set DSP value to specific FaustInterfaceControlers
-    setDSPValueCallback(address, value) {
-        this.setParamValue(address, value);
-    }
-    //Function overrides
-    getNumInputs() {
-        return 0;
-        //return this.MIDIcontrol.getNumInputs();
-    }
-    getNumOutputs() {
-        return 1;
-        //return this.MIDIcontrol.getNumOutputs();
-    }
-    setParamValue(text, val) {
-        //this.MIDIcontrol.setParamValue(text, val);
-    }
-    // getInputConnections() : Connector[]{
-    //     return [];
-    //     //return this.MIDIcontrol.fInputConnections;
-    // }
-    // getOutputConnections() : Connector[]{
-    //     return this.outputConnection;
-    // }
-    getParameterConnections() {
-        return [];
-        //return this.MIDIcontrol.fOutputConnections;
-    }
-}
 /*				CONNECT.JS
 Handles Audio/Graphical Connection/Deconnection of modules
 This is a historical file from Chris Wilson, modified for Faust ModuleClass needs.
 */
 /// <reference path="Modules/ModuleClass.ts"/>
 /// <reference path="Modules/GraphicalModule.ts"/>
-/// <reference path="Modules/ModuleMidiReader.ts"/>
 /// <reference path="Utilitary.ts"/>
 /// <reference path="Dragging.ts"/>
 class Connector {
@@ -3180,16 +2225,16 @@ class Connector {
         source.setDSPValue();
         destination.setDSPValue();
     }
-    // Connect Nodes in Web Audio Graph
-    connectMidiModules(source, destination) {
-        var destinationDSP;
-        if (destination != null && destination.moduleFaust.getDSP) {
-            destinationDSP = destination.moduleFaust.getDSP();
-        }
-        if (destinationDSP) {
-            source.setMidiCallback((midiInfo) => { destination.midiControl(midiInfo); });
-        }
-    }
+    // // Connect Nodes in Web Audio Graph
+    // connectMidiModules(source: ModuleMIDIReader, destination: ModuleClass): void {
+    //     var destinationDSP: IfDSP;
+    //     if (destination != null && destination.moduleFaust.getDSP) {
+    //         destinationDSP = destination.moduleFaust.getDSP();
+    //     }
+    //     if (destinationDSP) {
+    //         source.setMidiCallback((midiInfo) => { destination.midiControl(midiInfo) })
+    //     }
+    // }
     // Connect Comp module to instrument
     connectMidiCompositionModule(source, destination, instrument_id) {
         this.midiInstrumentID = instrument_id;
@@ -3252,7 +2297,16 @@ class Connector {
     createConnection(source, outtarget, destination, intarget) {
         var drag = new Drag();
         drag.startDraggingConnection(source, outtarget);
-        drag.stopDraggingConnection(source, destination);
+        drag.stopDraggingConnection(source, destination, intarget);
+    }
+    alreadyConnected(source, destination) {
+        if (source.getOutputConnections().length == 0 || destination.getInputConnections().length == 0)
+            return false;
+        for (let c of source.getOutputConnections()) {
+            if (c.destination.patchID == destination.patchID)
+                return true;
+        }
+        return false;
     }
     deleteConnection(event, drag) {
         event.stopPropagation();
@@ -3285,13 +2339,14 @@ class Connector {
     }
     breakMidiConnection(source, destination, connector) {
         // delete connection from src .outputConnections,
-        if (source != undefined) {
+        if (source != undefined && source.moduleFaust.getMidiInputConnections) {
             source.removeMidiConnection(connector);
+            source.moduleFaust.removeMidiOutputConnection(connector);
         }
         // delete connection from dst .inputConnections,
-        if (destination != undefined && destination.moduleFaust.getInputConnections) {
-            //todo make sure callback is deleted when instrument is removed
+        if (destination != undefined && destination.moduleFaust.getMidiOutputConnections) {
             //destination.removeMidiConnection(connector);
+            destination.moduleFaust.removeMidiInputConnection(connector);
         }
         // and delete the connectorShape
         if (connector.connectorShape)
@@ -3309,9 +2364,16 @@ class Connector {
             while (module.moduleFaust.getInputConnections().length > 0)
                 this.breakSingleInputConnection(module.moduleFaust.getInputConnections()[0].source, module, module.moduleFaust.getInputConnections()[0]);
         }
-    }
-    disconnectMIDIModule(module) {
-        //todo
+        //for all midi inputs
+        if (module.moduleFaust.getMidiInputConnections && module.moduleFaust.getMidiInputConnections()) {
+            while (module.moduleFaust.getMidiInputConnections().length > 0)
+                this.breakMidiConnection(module.moduleFaust.getMidiInputConnections()[0].source, module, module.moduleFaust.getMidiInputConnections()[0]);
+        }
+        //for all midi outputs
+        if (module.moduleFaust.getMidiOutputConnections && module.moduleFaust.getMidiOutputConnections()) {
+            while (module.moduleFaust.getMidiOutputConnections().length > 0)
+                this.breakMidiConnection(module, module.moduleFaust.getMidiOutputConnections()[0].destination, module.moduleFaust.getMidiOutputConnections()[0]);
+        }
     }
     static redrawInputConnections(module, drag) {
         var offset = module.moduleView.getInputNode();
@@ -3378,7 +2440,7 @@ class Connector {
                 drag.updateConnectorShapePath(currentConnectorShape, x1, x2, y1, y2);
             }
         }
-        var pmConnections = [...module.getInputParameterConnections(), ...module.getInputMidiConnections()];
+        var pmConnections = [...module.getOutputParameterConnections(), ...module.getOutputMidiConnections()];
         for (var c = 0; c < pmConnections.length; c++) {
             if (pmConnections[c].connectorShape) {
                 var connector = pmConnections[c];
@@ -4278,11 +3340,9 @@ class Scene {
                 var midiOutputs = module.moduleFaust.getMidiOutputConnections();
                 var jsonMidiOutputs = new JsonMidiConnectionSave();
                 jsonMidiOutputs.connections = [];
-                var info;
                 if (midiOutputs) {
                     for (var j = 0; j < midiOutputs.length; j++) {
-                        info.destination = midiOutputs[j].destination.patchID.toString();
-                        info.instrumentID = midiOutputs[j].midiInstrumentID;
+                        var info = { "destination": midiOutputs[j].destination.patchID, "instrumentID": midiOutputs[j].midiInstrumentID };
                         jsonMidiOutputs.connections.push(info);
                     }
                 }
@@ -4454,6 +3514,7 @@ class Scene {
             });
         }
         catch (e) {
+            console.log(e);
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
             //next module
             this.arrayRecalScene.shift();
@@ -4461,7 +3522,6 @@ class Scene {
         }
     }
     createCompositionModule(moduleJson) {
-        //create new module
         try {
             new CompositionModule(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { this.removeModule(module); }, moduleJson, (module) => {
                 module.patchID = this.tempPatchId;
@@ -4471,8 +3531,8 @@ class Scene {
                         module.addInterfaceParam(slider.path, parseFloat(slider.value));
                     }
                 }
-                // module.moduleFaust.recallMidiDestination = this.arrayRecalScene[0].midiOutputs.connections;
-                // this.arrayRecalledModule.push(module);
+                module.moduleFaust.recallMidiDestination = this.arrayRecalScene[0].midiOutputs.connections;
+                this.arrayRecalledModule.push(module);
                 module.recallInterfaceParams();
                 module.setFaustInterfaceControles();
                 module.createFaustInterface();
@@ -4485,6 +3545,7 @@ class Scene {
             });
         }
         catch (e) {
+            console.log(e);
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
             //next module
             this.arrayRecalScene.shift();
@@ -4498,24 +3559,26 @@ class Scene {
                 var moduleSource = this.getModuleByPatchId(module.moduleFaust.recallInputsSource[i]);
                 if (moduleSource != null) {
                     var connector = new Connector();
-                    connector.createConnection(moduleSource, moduleSource.moduleView.getOutputNode(), module, module.moduleView.getInputNode());
+                    if (!connector.alreadyConnected(moduleSource, module))
+                        connector.createConnection(moduleSource, moduleSource.moduleView.getOutputNode(), module, module.moduleView.getInputNode());
                 }
             }
             for (var i = 0; i < module.moduleFaust.recallOutputsDestination.length; i++) {
                 var moduleDestination = this.getModuleByPatchId(module.moduleFaust.recallOutputsDestination[i]);
                 if (moduleDestination != null) {
                     var connector = new Connector();
-                    connector.createConnection(module, module.moduleView.getOutputNode(), moduleDestination, moduleDestination.moduleView.getInputNode());
+                    if (!connector.alreadyConnected(module, moduleDestination))
+                        connector.createConnection(module, module.moduleView.getOutputNode(), moduleDestination, moduleDestination.moduleView.getInputNode());
                 }
             }
             //reconnect midi
             for (var i = 0; i < module.moduleFaust.recallMidiDestination.length; i++) {
                 var connection = module.moduleFaust.recallMidiDestination[i];
-                var moduleDestination = this.getModuleByPatchId(connection.instrumentID);
+                var moduleDestination = this.getModuleByPatchId(connection.destination);
                 if (moduleDestination != null) {
                     var connector = new Connector();
                     connector.midiInstrumentID = connection.instrumentID;
-                    connector.createConnection(module, module.getMidiOutput(connection.destination), moduleDestination, moduleDestination.moduleView.getMidiNode());
+                    connector.createConnection(module, module.getMidiOutput(connection.instrumentID), moduleDestination, moduleDestination.moduleView.getMidiNode());
                 }
             }
         }
@@ -4646,19 +3709,829 @@ class JsonSliderSave {
 }
 class JsonFactorySave {
 }
+/* Wrapper for accessing strings through sequential reads */
+function Stream(str) {
+    var position = 0;
+    function read(length) {
+        var result = str.substr(position, length);
+        position += length;
+        return result;
+    }
+    /* read a big-endian 32-bit integer */
+    function readInt32() {
+        var result = ((str.charCodeAt(position) << 24)
+            + (str.charCodeAt(position + 1) << 16)
+            + (str.charCodeAt(position + 2) << 8)
+            + str.charCodeAt(position + 3));
+        position += 4;
+        return result;
+    }
+    /* read a big-endian 16-bit integer */
+    function readInt16() {
+        var result = ((str.charCodeAt(position) << 8)
+            + str.charCodeAt(position + 1));
+        position += 2;
+        return result;
+    }
+    /* read an 8-bit integer */
+    function readInt8(signed) {
+        var result = str.charCodeAt(position);
+        if (signed && result > 127)
+            result -= 256;
+        position += 1;
+        return result;
+    }
+    function eof() {
+        return position >= str.length;
+    }
+    /* read a MIDI-style variable-length integer
+        (big-endian value in groups of 7 bits,
+        with top bit set to signify that another byte follows)
+    */
+    function readVarInt() {
+        var result = 0;
+        while (true) {
+            var b = readInt8(false);
+            if (b & 0x80) {
+                result += (b & 0x7f);
+                result <<= 7;
+            }
+            else {
+                /* b is the last byte */
+                return result + b;
+            }
+        }
+    }
+    return {
+        'eof': eof,
+        'read': read,
+        'readInt32': readInt32,
+        'readInt16': readInt16,
+        'readInt8': readInt8,
+        'readVarInt': readVarInt
+    };
+}
+/*
+class to parse the .mid file format
+(depends on stream.js)
+*/
+///
+/// <reference path="./stream.ts" />
+class MidiEvent {
+}
+;
+function MidiFile(data) {
+    function readChunk(stream) {
+        var id = stream.read(4);
+        var length = stream.readInt32();
+        return {
+            'id': id,
+            'length': length,
+            'data': stream.read(length)
+        };
+    }
+    var lastEventTypeByte;
+    function readEvent(stream) {
+        var event = new MidiEvent();
+        event.deltaTime = stream.readVarInt();
+        var eventTypeByte = stream.readInt8();
+        if ((eventTypeByte & 0xf0) == 0xf0) {
+            /* system / meta event */
+            if (eventTypeByte == 0xff) {
+                /* meta event */
+                event.type = 'meta';
+                var subtypeByte = stream.readInt8();
+                var length = stream.readVarInt();
+                switch (subtypeByte) {
+                    case 0x00:
+                        event.subtype = 'sequenceNumber';
+                        if (length != 2)
+                            throw "Expected length for sequenceNumber event is 2, got " + length;
+                        event.number = stream.readInt16();
+                        return event;
+                    case 0x01:
+                        event.subtype = 'text';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x02:
+                        event.subtype = 'copyrightNotice';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x03:
+                        event.subtype = 'trackName';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x04:
+                        event.subtype = 'instrumentName';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x05:
+                        event.subtype = 'lyrics';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x06:
+                        event.subtype = 'marker';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x07:
+                        event.subtype = 'cuePoint';
+                        event.text = stream.read(length);
+                        return event;
+                    case 0x20:
+                        event.subtype = 'midiChannelPrefix';
+                        if (length != 1)
+                            throw "Expected length for midiChannelPrefix event is 1, got " + length;
+                        event.channel = stream.readInt8();
+                        return event;
+                    case 0x2f:
+                        event.subtype = 'endOfTrack';
+                        if (length != 0)
+                            throw "Expected length for endOfTrack event is 0, got " + length;
+                        return event;
+                    case 0x51:
+                        event.subtype = 'setTempo';
+                        if (length != 3)
+                            throw "Expected length for setTempo event is 3, got " + length;
+                        event.microsecondsPerBeat = ((stream.readInt8() << 16)
+                            + (stream.readInt8() << 8)
+                            + stream.readInt8());
+                        return event;
+                    case 0x54:
+                        event.subtype = 'smpteOffset';
+                        if (length != 5)
+                            throw "Expected length for smpteOffset event is 5, got " + length;
+                        var hourByte = stream.readInt8();
+                        event.frameRate = {
+                            0x00: 24, 0x20: 25, 0x40: 29, 0x60: 30
+                        }[hourByte & 0x60];
+                        event.hour = hourByte & 0x1f;
+                        event.min = stream.readInt8();
+                        event.sec = stream.readInt8();
+                        event.frame = stream.readInt8();
+                        event.subframe = stream.readInt8();
+                        return event;
+                    case 0x58:
+                        event.subtype = 'timeSignature';
+                        if (length != 4)
+                            throw "Expected length for timeSignature event is 4, got " + length;
+                        event.numerator = stream.readInt8();
+                        event.denominator = Math.pow(2, stream.readInt8());
+                        event.metronome = stream.readInt8();
+                        event.thirtyseconds = stream.readInt8();
+                        return event;
+                    case 0x59:
+                        event.subtype = 'keySignature';
+                        if (length != 2)
+                            throw "Expected length for keySignature event is 2, got " + length;
+                        event.key = stream.readInt8(true);
+                        event.scale = stream.readInt8();
+                        return event;
+                    case 0x7f:
+                        event.subtype = 'sequencerSpecific';
+                        event.data = stream.read(length);
+                        return event;
+                    default:
+                        // console.log("Unrecognised meta event subtype: " + subtypeByte);
+                        event.subtype = 'unknown';
+                        event.data = stream.read(length);
+                        return event;
+                }
+                event.data = stream.read(length);
+                return event;
+            }
+            else if (eventTypeByte == 0xf0) {
+                event.type = 'sysEx';
+                var length = stream.readVarInt();
+                event.data = stream.read(length);
+                return event;
+            }
+            else if (eventTypeByte == 0xf7) {
+                event.type = 'dividedSysEx';
+                var length = stream.readVarInt();
+                event.data = stream.read(length);
+                return event;
+            }
+            else {
+                throw "Unrecognised MIDI event type byte: " + eventTypeByte;
+            }
+        }
+        else {
+            /* channel event */
+            var param1;
+            if ((eventTypeByte & 0x80) == 0) {
+                /* running status - reuse lastEventTypeByte as the event type.
+                    eventTypeByte is actually the first parameter
+                */
+                param1 = eventTypeByte;
+                eventTypeByte = lastEventTypeByte;
+            }
+            else {
+                param1 = stream.readInt8();
+                lastEventTypeByte = eventTypeByte;
+            }
+            var eventType = eventTypeByte >> 4;
+            event.channel = eventTypeByte & 0x0f;
+            event.type = 'channel';
+            switch (eventType) {
+                case 0x08:
+                    event.subtype = 'noteOff';
+                    event.noteNumber = param1;
+                    event.velocity = stream.readInt8();
+                    return event;
+                case 0x09:
+                    event.noteNumber = param1;
+                    event.velocity = stream.readInt8();
+                    if (event.velocity == 0) {
+                        event.subtype = 'noteOff';
+                    }
+                    else {
+                        event.subtype = 'noteOn';
+                    }
+                    return event;
+                case 0x0a:
+                    event.subtype = 'noteAftertouch';
+                    event.noteNumber = param1;
+                    event.amount = stream.readInt8();
+                    return event;
+                case 0x0b:
+                    event.subtype = 'controller';
+                    event.controllerType = param1;
+                    event.value = stream.readInt8();
+                    return event;
+                case 0x0c:
+                    event.subtype = 'programChange';
+                    event.programNumber = param1;
+                    return event;
+                case 0x0d:
+                    event.subtype = 'channelAftertouch';
+                    event.amount = param1;
+                    return event;
+                case 0x0e:
+                    event.subtype = 'pitchBend';
+                    event.value = param1 + (stream.readInt8() << 7);
+                    return event;
+                default:
+                    throw "Unrecognised MIDI event type: " + eventType;
+                /*
+                console.log("Unrecognised MIDI event type: " + eventType);
+                stream.readInt8();
+                event.subtype = 'unknown';
+                return event;
+                */
+            }
+        }
+    }
+    var stream = Stream(data);
+    var headerChunk = readChunk(stream);
+    if (headerChunk.id != 'MThd' || headerChunk.length != 6) {
+        throw "Bad .mid file - header not found";
+    }
+    var headerStream = Stream(headerChunk.data);
+    var formatType = headerStream.readInt16();
+    var trackCount = headerStream.readInt16();
+    var timeDivision = headerStream.readInt16();
+    if (timeDivision & 0x8000) {
+        throw "Expressing time division in SMTPE frames is not supported yet";
+    }
+    else {
+        var ticksPerBeat = timeDivision;
+    }
+    var header = {
+        'formatType': formatType,
+        'trackCount': trackCount,
+        'ticksPerBeat': ticksPerBeat
+    };
+    var tracks = [];
+    for (var i = 0; i < header.trackCount; i++) {
+        tracks[i] = [];
+        var trackChunk = readChunk(stream);
+        if (trackChunk.id != 'MTrk') {
+            throw "Unexpected chunk - expected MTrk, got " + trackChunk.id;
+        }
+        var trackStream = Stream(trackChunk.data);
+        while (!trackStream.eof()) {
+            var event = readEvent(trackStream);
+            tracks[i].push(event);
+            //console.log(event);
+        }
+    }
+    return {
+        'header': header,
+        'tracks': tracks
+    };
+}
+/// <reference path="./midifile.ts" />
+function clone(o) {
+    if (typeof o != 'object')
+        return (o);
+    if (o == null)
+        return (o);
+    var ret = (typeof o.length == 'number') ? [] : {};
+    for (var key in o)
+        ret[key] = clone(o[key]);
+    return ret;
+}
+;
+class ReplayerMidiEvent {
+}
+;
+class TrackState {
+}
+;
+class TemporalMidi {
+}
+;
+class Replayer {
+    constructor(midiFile, timeWarp, eventProcessor, bpm, filename) {
+        this.midiEvent = [];
+        this.temporal = [];
+        this.currentBeat = 0;
+        this.filename = filename;
+        this.midiFile = midiFile;
+        this.trackStates = [];
+        this.beatsPerMinute = bpm ? bpm : 120;
+        this.bpmOverride = bpm ? true : false;
+        this.ticksPerBeat = midiFile.header.ticksPerBeat;
+        for (var i = 0; i < midiFile.tracks.length; i++) {
+            this.trackStates[i] = {
+                'nextEventIndex': 0,
+                'ticksToNextEvent': (midiFile.tracks[i].length ?
+                    midiFile.tracks[i][0].deltaTime :
+                    null)
+            };
+        }
+        this.processEvents();
+    }
+    getData() {
+        return clone(this.temporal);
+    }
+    processEvents() {
+        var midiEvent = this.getNextEvent();
+        if (midiEvent) {
+            while (midiEvent) {
+                midiEvent = this.processNext(midiEvent);
+            }
+        }
+        var measurePosition = this.currentBeat % 4.0;
+        if (measurePosition != 0.0) {
+            var diff = 4.0 - measurePosition;
+            console.log(`padding with ${diff} beats`);
+            this.currentBeat += diff;
+            var dummyEvent = this.temporal[this.temporal.length - 1].event;
+            this.temporal.push({ "event": dummyEvent, "time": 0, "beatOffset": diff, "beat": this.currentBeat });
+        }
+    }
+    ;
+    processNext(midiEvent) {
+        if (!this.bpmOverride && midiEvent.event.type == "meta" && midiEvent.event.subtype == "setTempo") {
+            // tempo change events can occur anywhere in the middle and affect events that follow
+            var beatsPerMinute = 60000000 / midiEvent.event.microsecondsPerBeat;
+        }
+        ///
+        var beatsToGenerate = 0;
+        var secondsToGenerate = 0;
+        //some wierd messages have duration of 1 tick
+        if (midiEvent.ticksToEvent > 1) {
+            beatsToGenerate = midiEvent.ticksToEvent / this.ticksPerBeat;
+            secondsToGenerate = beatsToGenerate / (beatsPerMinute / 60);
+        }
+        this.currentBeat = this.currentBeat + beatsToGenerate;
+        ///
+        var time = (secondsToGenerate * 1000 * this.timeWarp) || 0;
+        this.temporal.push({ "event": midiEvent, "time": time, "beatOffset": beatsToGenerate, "beat": this.currentBeat });
+        return this.getNextEvent();
+    }
+    ;
+    getNextEvent() {
+        var ticksToNextEvent = null;
+        var nextEventTrack = null;
+        var nextEventIndex = null;
+        for (var i = 0; i < this.trackStates.length; i++) {
+            if (this.trackStates[i].ticksToNextEvent != null
+                && (ticksToNextEvent == null || this.trackStates[i].ticksToNextEvent < ticksToNextEvent)) {
+                ticksToNextEvent = this.trackStates[i].ticksToNextEvent;
+                nextEventTrack = i;
+                nextEventIndex = this.trackStates[i].nextEventIndex;
+            }
+        }
+        if (nextEventTrack != null) {
+            /* consume event from that track */
+            var nextEvent = this.midiFile.tracks[nextEventTrack][nextEventIndex];
+            if (this.midiFile.tracks[nextEventTrack][nextEventIndex + 1]) {
+                this.trackStates[nextEventTrack].ticksToNextEvent += this.midiFile.tracks[nextEventTrack][nextEventIndex + 1].deltaTime;
+            }
+            else {
+                this.trackStates[nextEventTrack].ticksToNextEvent = null;
+            }
+            this.trackStates[nextEventTrack].nextEventIndex += 1;
+            /* advance timings on all tracks by ticksToNextEvent */
+            for (var i = 0; i < this.trackStates.length; i++) {
+                if (this.trackStates[i].ticksToNextEvent != null) {
+                    this.trackStates[i].ticksToNextEvent -= ticksToNextEvent;
+                }
+            }
+            return {
+                "ticksToEvent": ticksToNextEvent,
+                "event": nextEvent,
+                "track": nextEventTrack
+            };
+        }
+        else {
+            return null;
+        }
+    }
+}
+;
+/*
+Adapted from Midi player by mudcube
+----------------------------------------------------------
+MIDI.Player : 0.3.1 : 2015-03-26
+
+----------------------------------------------------------
+https://github.com/mudcube/MIDI.js
+----------------------------------------------------------
+*/
+/// <reference path="./jasmid/replayer.ts" />
+/// <reference path="./jasmid/midifile.ts" />
+function clamp(min, max, value) {
+    return (value < min) ? min : ((value > max) ? max : value);
+}
+;
+class MIDIManager {
+    constructor(midiCallback) {
+        this.numLoops = 0;
+        this.startBeat = 0;
+        this.api = "webaudio";
+        this.currentTime = 0;
+        this.endTime = 0;
+        this.restart = 0;
+        this.playing = false;
+        this.timeWarp = 1;
+        this.startDelay = 0;
+        this.MIDIOffset = 0;
+        this.numLoops = 0;
+        this.readMessageMinInterval = 200; //200 ms
+        this.eventQueue = []; // hold events to be triggered
+        this.queuedTime = 0; // 
+        this.startTime = 0; // to measure time elapse
+        this.noteRegistrar = {}; // get event for requested note
+        this.onMidiEvent = midiCallback;
+        this.currentMidiMessageIndex = 0;
+        this.cacheLoaded = false;
+        this.currentBeat = 0;
+        this.scheduledNotes = [];
+        this.instrumentName = "noname";
+    }
+    addListener(listenerCallback) {
+        this.onMidiEvent = listenerCallback;
+    }
+    ;
+    removeListener() {
+        this.onMidiEvent = undefined;
+    }
+    ;
+    loadMidiFile(data, onsuccess, onprogress, onerror) {
+        try {
+            this.currentData = data;
+            this.readData(data);
+            //onsuccess()
+            ///
+            // MIDI.loadPlugin({
+            //     // 			instruments: midi.getFileInstruments(),
+            //     onsuccess: onsuccess,
+            //     onprogress: onprogress,
+            //     onerror: onerror
+            // });
+        }
+        catch (event) {
+            onerror && onerror(event);
+        }
+    }
+    ;
+    readData(midiData) {
+        this.replayer = new Replayer(MidiFile(midiData), this.timeWarp, null, 120, this.filename);
+        this.data = this.replayer.getData();
+        this.totalBeats = this.getTotalBeats();
+    }
+    loadFile(file, onsuccess, onprogress, onerror) {
+        this.filename = file;
+        this.stop();
+        if (file.indexOf('base64,') !== -1) {
+            var data = window.atob(file.split(',')[1]);
+            onsuccess(file);
+            this.loadMidiFile(data, onsuccess, onprogress, onerror);
+        }
+        else {
+            var fetch = new XMLHttpRequest();
+            var self = this;
+            fetch.open('GET', file);
+            fetch.overrideMimeType('text/plain; charset=x-user-defined');
+            fetch.onreadystatechange = function () {
+                if (this.readyState === 4) {
+                    if (this.status === 200) {
+                        var t = this.responseText || '';
+                        var ff = [];
+                        var mx = t.length;
+                        var scc = String.fromCharCode;
+                        for (var z = 0; z < mx; z++) {
+                            ff[z] = scc(t.charCodeAt(z) & 255);
+                        }
+                        ///
+                        var data = ff.join('');
+                        self.loadMidiFile(data, onsuccess, onprogress, onerror);
+                    }
+                    else {
+                        onerror(file) && onerror('Unable to load MIDI file');
+                    }
+                }
+            };
+            fetch.send();
+        }
+    }
+    ;
+    // getFileInstruments():void {
+    //     var instruments = {};
+    //     var programs = {};
+    //     for (var n = 0; n < this.data.length; n ++) {
+    //         var event = this.data[n][0].event;
+    //         if (event.type !== 'channel') {
+    //             continue;
+    //         }
+    //         var channel = event.channel;
+    //         switch(event.subtype) {
+    //             case 'controller':
+    //             //				console.log(event.channel, MIDI.defineControl[event.controllerType], event.value);
+    //             break;
+    //             case 'programChange':
+    //             programs[channel] = event.programNumber;
+    //             break;
+    //             case 'noteOn':
+    //             var program = programs[channel];
+    //             var gm = MIDI.GM.byId[isFinite(program) ? program : channel];
+    //             instruments[gm.id] = true;
+    //             break;
+    //         }
+    //     }
+    //     var ret = [];
+    //     for (var key in instruments) {
+    //         ret.push(key);
+    //     }
+    //     return ret;
+    // };
+    processMidi(data) {
+        // this.scheduledNotes.shift();
+        if (data.message === 128) {
+            delete this.noteRegistrar[data.note];
+        }
+        else {
+            this.noteRegistrar[data.note] = data;
+        }
+        if (this.onMidiEvent) {
+            this.onMidiEvent(data);
+        }
+        this.currentTime = data.currentTime;
+        ///
+        this.eventQueue.shift();
+    }
+    scheduleNote(channel, note, eventTime, nowTime, endTime, message, velocity) {
+        //console.log(`${this.getContext().currentTime} - Midi event queued in ${currentTime -offset}  `)
+        return setTimeout(() => {
+            var data = {
+                channel: channel,
+                note: note,
+                now: nowTime,
+                end: endTime,
+                message: message,
+                velocity: velocity
+            };
+            this.processMidi(data);
+        }, eventTime * 1000);
+    }
+    ;
+    scheduleNextMidiEvents(globalBeat, globalBeatCallTime, BPM) {
+        //console.log(`${this.instrumentName} - Start beat ${this.startBeat} global  beat  ${globalBeat}`);
+        //Wait until beat is same is start beat
+        if (globalBeat < this.startBeat) {
+            //console.log(`${this.instrumentName} -  ${this.filename} - waiting for start beat ${this.startBeat}`)
+            return;
+        }
+        var ctx = this.getContext();
+        var beatsToBuffer = 2;
+        this.currentTime = ctx.currentTime;
+        //get time offset from when function was called
+        //Will be substracted from scheduled delay
+        var offset = ctx.currentTime - globalBeatCallTime;
+        // Current playing beat relative to internal beat clock
+        var relativeStartBeat = (globalBeat - this.startBeat) % this.totalBeats; // - loop_offset;
+        // Last beat that would be scheduled relative to internal beat clock
+        var relativeEndBeat = (globalBeat - this.startBeat + beatsToBuffer) % this.totalBeats; // - loop_offset;
+        // if looped and we are out of "overlapping" state
+        if (this.isLooping && (relativeStartBeat) < 2) {
+            this.isLooping = false;
+            console.log(`${this.instrumentName} - ${this.filename} - OUT OF LOOPED ZONE`);
+        }
+        //Reset loopflag
+        var messageCount = 0;
+        if (!this.nextMidiEvent) {
+            console.log("BAD MIDIEVENT THIS IS BAD");
+            return;
+        }
+        var eventBeat = this.nextMidiEvent.beat;
+        // schedule midi events for next beatsToBuffer beats (at 120 bpm each beat is .5 s) - 2 beats : schedule approx 1 second ahead
+        while ((!this.isLooping && eventBeat <= (relativeStartBeat + beatsToBuffer)) || (this.isLooping && (eventBeat < relativeEndBeat))) {
+            var event = this.nextMidiEvent.event.event;
+            //only log and skip missed notes when not in weird part of looping state
+            if (!this.isLooping && eventBeat < relativeStartBeat) {
+                //console.log(`missed midi message ${event.subtype}`);
+                //console.log(`missed midi message`);
+                this.nextMidiEvent = this.getNextMidiEvent();
+                eventBeat = this.nextMidiEvent.beat;
+                continue;
+            }
+            if (!event || event.type !== 'channel') {
+                this.nextMidiEvent = this.getNextMidiEvent();
+                eventBeat = this.nextMidiEvent.beat;
+                continue;
+            }
+            var channelId = event.channel;
+            //Calculate how many ms to wait before trigggering midi note 
+            if (this.isLooping && eventBeat < relativeStartBeat) {
+                eventBeat += this.totalBeats - this.currentBeat;
+            }
+            var beatOffsetSeconds = AudioUtils.beatsToSeconds(eventBeat - relativeStartBeat, BPM) - offset;
+            this.currentBeat = this.nextMidiEvent.beat;
+            switch (event.subtype) {
+                case 'noteOn':
+                    messageCount++;
+                    //hack for silences
+                    if (event.velocity > 2) {
+                        var note = event.noteNumber - (this.MIDIOffset || 0);
+                        this.eventQueue.push({
+                            event: event,
+                            time: beatOffsetSeconds,
+                            //source: MIDI.noteOn(channelId, event.noteNumber, event.velocity, delay),
+                            interval: this.scheduleNote(channelId, note, beatOffsetSeconds, this.currentTime, this.endTime, 144, event.velocity)
+                        });
+                    }
+                    break;
+                default:
+                    break;
+            }
+            this.nextMidiEvent = this.getNextMidiEvent();
+            //for edge case when relativeBeat + schedule offset (16) > total beats
+            eventBeat = this.nextMidiEvent.beat;
+        }
+        //console.log(`${this.instrumentName} - Scheduled ${messageCount} midi events - for beats [${relativeStartBeat.toPrecision(3)} - ${relativeEndBeat.toPrecision(3)}]/${this.totalBeats}`);
+    }
+    getNextMidiEvent() {
+        this.currentMidiMessageIndex++;
+        if (this.currentMidiMessageIndex == this.data.length) {
+            console.log(`${this.instrumentName} - ${this.filename} - IN LOOP ZONE`);
+            this.isLooping = true;
+            this.numLoops++;
+        }
+        this.currentMidiMessageIndex = this.currentMidiMessageIndex % this.data.length;
+        return (this.data[this.currentMidiMessageIndex]);
+    }
+    start(startBeat) {
+        this.startBeat = startBeat;
+        this.isLooping = false;
+        this.currentBeat = 0;
+        this.currentMidiMessageIndex = 0;
+        this.nextMidiEvent = this.data[0];
+        //console.log("Starting midi playback of " + this.filename)
+        this.playing = this.startAudio(this.cacheLoaded);
+        return this.playing;
+    }
+    ;
+    // resume(onsuccess): void {
+    //     if (this.currentTime < -1) {
+    //         this.currentTime = -1;
+    //     }
+    //     this.startAudio(this.currentTime, this.cacheLoaded, onsuccess);
+    // };
+    pause() {
+        console.log("Pausing midi playback of " + this.filename);
+        var tmp = this.restart;
+        this.stopAudio();
+        this.restart = tmp;
+    }
+    ;
+    stop(resetLoops = false, clearNotes = false) {
+        this.stopAudio(clearNotes);
+        this.scheduledNotes = [];
+        this.restart = 0;
+        this.currentTime = 0;
+        this.currentBeat = 0;
+        this.currentMidiMessageIndex = 0;
+        this.isLooping = false;
+        if (resetLoops) {
+            this.numLoops = 0;
+        }
+    }
+    ;
+    // Playing the audio
+    startAudio(fromCache) {
+        if (!this.replayer) {
+            console.log("Replayer undefined - aborting");
+            return false;
+        }
+        //why do this???
+        if (!fromCache) {
+            console.log(`${this.instrumentName} - ${this.filename} : Loading from cache `);
+            this.playing && this.stopAudio();
+            this.data = this.replayer.getData();
+            this.totalBeats = this.getTotalBeats();
+            this.cacheLoaded = true;
+        }
+        // Less than 4 beats to file- sign it's empty
+        if (this.totalBeats < 3) {
+            console.log(`${this.filename} is too short, aborting`);
+            this.stop();
+            return false;
+        }
+        return true;
+        // ///
+        // onsuccess && onsuccess(this.eventQueue); 
+    }
+    ;
+    stopAudio(clearNotes = false) {
+        this.playing = false;
+        // stop the audio, and intervals
+        if (clearNotes) {
+            while (this.eventQueue.length) {
+                var o = this.eventQueue.pop();
+                window.clearInterval(o.interval);
+                if (!o.source)
+                    continue; // is not webaudio
+                o.source.disconnect(0);
+            }
+        }
+        // // run callback to cancel any notes still playing
+        // for (var key in this.noteRegistrar) {
+        //     var o = this.noteRegistrar[key]
+        //     if (this.noteRegistrar[key].message === 144 && this.onMidiEvent) {
+        //         this.onMidiEvent({
+        //             channel: o.channel,
+        //             note: o.note,
+        //             now: o.now,
+        //             end: o.end,
+        //             message: 128,
+        //             velocity: o.velocity
+        //         });
+        //     }
+        // }
+        // reset noteRegistrar
+        this.noteRegistrar = {};
+    }
+    ;
+    resetLoops() {
+        this.numLoops = 0;
+    }
+    getContext() {
+        return Utilitary.audioContext;
+    }
+    ;
+    getTotalBeats() {
+        var data = this.data;
+        var length = data.length;
+        var totalBeats = data[length - 1].beat;
+        console.log(`Midi file length is ${totalBeats} beats long`);
+        return totalBeats;
+    }
+    ;
+    getBeats() {
+        var data = this.data;
+        var length = data.length;
+        var totalTime = 0.5;
+        for (var n = 0; n < length; n++) {
+            totalTime += data[n][1];
+        }
+        return totalTime;
+    }
+    ;
+    getBeatOffsetFromEnd(currentBeat) {
+        return this.totalBeats - (currentBeat - this.startBeat) % this.totalBeats;
+    }
+}
+;
+/// <reference path="../midi/MidiManager.ts"/>
 //Todo, delete callback targets on cable deletion
 class InstrumentController {
     constructor(name, n_movements) {
         this.name = name;
         this.fileLoaded = false;
-        this.movementMidiControllers = {}; // {number: MIDIManager[]}
-        this.currentMovement = 0;
-        this.currentController = 0;
+        this.movementMidiFiles = {}; // {number: MIDIManager[]}
+        this.midiControllers = {};
+        this.movementProbabilities = {};
+        this.mIdx = 0;
+        this.pIdx = 0;
         this.isPlaying = false;
         this.callbackTargets = {};
         this.connectors = [];
         for (let i = 0; i < n_movements; i++) {
-            this.movementMidiControllers[i] = [];
+            this.movementMidiFiles[i] = [];
+            this.movementProbabilities[i] = [];
         }
     }
     addMidiCallback(c, cb) {
@@ -4680,10 +4553,18 @@ class InstrumentController {
                 this.callbackTargets[k](midiInfo);
         }
     }
-    loadMidi(file, movement) {
+    loadMidi(file, movement, prob) {
+        console.log(`${this.name} - loading ${file}`);
+        this.movementMidiFiles[movement].push(file);
+        this.movementProbabilities[movement].push(prob);
+        if (file in this.midiControllers) {
+            console.log(`${this.name} - already has midi controller for ${file}`);
+            return;
+        }
         let m = new MIDIManager((midiInfo) => this.midiCallback(midiInfo));
+        m.instrumentName = this.name;
         m.loadFile(file, (file) => { this.midiLoaded(file); }, null, (file) => (this.midiLoadFailed(file)));
-        this.movementMidiControllers[movement].push(m);
+        this.midiControllers[file] = m;
     }
     midiLoaded(filename) {
         console.log(this.name + " successfully loaded file : " + filename);
@@ -4693,49 +4574,117 @@ class InstrumentController {
         console.log(this.name + " failed to load file : " + filename);
         this.fileLoaded = false;
     }
-    readMidi() {
-        this.movementMidiControllers[this.currentMovement][this.currentController].readMidi();
+    readMidi(globalBeat, globalBeatTime, BPM) {
+        this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]]
+            .scheduleNextMidiEvents(globalBeat, globalBeatTime, BPM);
     }
     play() {
-        console.log(`${this.name} starting playback of movement ${this.currentMovement} -${this.currentController}`);
-        let movementLength = this.movementMidiControllers[this.currentMovement].length;
+        let movementLength = this.movementMidiFiles[this.mIdx].length;
         if (movementLength > 0) {
-            if (this.currentController >= movementLength || this.currentController < 0) {
-                this.currentController = 0;
+            if (this.pIdx >= movementLength || this.pIdx < 0) {
+                this.pIdx = 0;
             }
-            this.isPlaying = this.movementMidiControllers[this.currentMovement][this.currentController].start();
-            ;
+            let midifile = this.movementMidiFiles[this.mIdx][this.pIdx];
+            console.log(`${this.name} starting playback of movement ${this.mIdx} -${this.pIdx} - ${midifile}`);
+            this.isPlaying = this.midiControllers[midifile].start(0);
         }
     }
-    setBPM(bpm) {
-        for (let key of Object.keys(this.movementMidiControllers)) {
-            for (let c of this.movementMidiControllers[key]) {
-                c.setBPM(bpm);
-            }
-        }
+    playMovement(movement, startBeat) {
+        //stop previous piece
+        if (this.isPlaying)
+            this.stop(true);
+        //Set movement index and reset controller index
+        this.mIdx = movement;
+        this.pIdx = 0;
+        //If no pieces for this movement return
+        if (this.movementMidiFiles[this.mIdx].length == 0)
+            return;
+        let midifile = this.movementMidiFiles[this.mIdx][this.pIdx];
+        console.log(`${this.name} starting playback of movement ${this.mIdx} -${this.pIdx} - ${midifile} at  beat ${startBeat}`);
+        this.isPlaying = this.midiControllers[midifile].start(startBeat);
+    }
+    playPiece(piece, startBeat) {
+        //stop previous playing piece
+        if (this.isPlaying)
+            this.stop();
+        //If no pieces for this movement return
+        let movementLength = this.movementMidiFiles[this.mIdx].length;
+        if (movementLength == 0)
+            return;
+        //clamp piece index
+        this.pIdx = Math.max(Math.min(piece, movementLength), 0);
+        //Play next piece
+        let midiFile = this.movementMidiFiles[this.mIdx][this.pIdx];
+        console.log(`${this.name} - movement ${this.mIdx} - playing piece ${piece} (${midiFile}) - at beat ${startBeat}`);
+        let c = this.midiControllers[midiFile];
+        this.isPlaying = c.start(startBeat);
     }
     getBeat() {
-        return this.movementMidiControllers[this.currentMovement][this.currentController].currentBeat;
+        return this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]].currentBeat;
     }
     getBeatTime() {
         if (this.isPlaying)
-            return this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime;
+            return this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]].queuedTime;
         return -1;
     }
     setBeatTime(bt) {
         if (this.isPlaying)
-            this.movementMidiControllers[this.currentMovement][this.currentController].queuedTime = bt;
+            this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]] = bt;
     }
-    stop() {
-        if (this.movementMidiControllers[this.currentMovement] && this.movementMidiControllers[this.currentMovement][this.currentController]) {
-            this.movementMidiControllers[this.currentMovement][this.currentController].stop();
+    stop(resetLoops = false) {
+        if (this.movementMidiFiles[this.mIdx] && this.movementMidiFiles[this.mIdx][this.pIdx]) {
+            let midifile = this.movementMidiFiles[this.mIdx][this.pIdx];
+            console.log(`${this.name} - movement ${this.mIdx} - stopping piece ${this.pIdx} (${midifile}) `);
+            this.midiControllers[midifile].stop(resetLoops);
         }
         this.isPlaying = false;
     }
     loopCallback() {
-        this.currentController += 1;
+        this.pIdx += 1;
+        this.pIdx = this.pIdx % Object.keys(this.movementMidiFiles).length;
         this.play();
     }
+    isAboutToLoop() {
+        let c = this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]];
+        return c.isLooping;
+    }
+    getNextRandomPiece(currentBeat) {
+        var probs = this.movementProbabilities[this.mIdx];
+        var total_prob = probs.reduce(getSum, 0);
+        var rand = Math.random() * total_prob;
+        var sum = 0;
+        var nextPiece = 0;
+        while (sum <= rand && nextPiece < probs.length) {
+            sum += probs[nextPiece];
+            nextPiece++;
+        }
+        nextPiece -= 1;
+        var startBeat = currentBeat + this.getBeatOffsetFromPieceEnd(currentBeat);
+        if (this.pIdx == nextPiece) {
+            console.log(`${this.name}- Next piece is same as current piece - just call start to set new startbeat`);
+            let midiFile = this.movementMidiFiles[this.mIdx][this.pIdx];
+            this.midiControllers[midiFile].start(startBeat);
+        }
+        else {
+            this.playPiece(nextPiece, startBeat);
+        }
+    }
+    getBeatOffsetFromPieceEnd(currentBeat) {
+        if (!this.isPlaying)
+            return 0;
+        let c = this.midiControllers[this.movementMidiFiles[this.mIdx][this.pIdx]];
+        return c.getBeatOffsetFromEnd(currentBeat);
+    }
+    getNumberOfLoops() {
+        var numloops = 0;
+        for (let file of this.movementMidiFiles[this.mIdx]) {
+            numloops += this.midiControllers[file].numLoops;
+        }
+        return numloops;
+    }
+}
+function getSum(total, num) {
+    return total + num;
 }
 /*				MODULECLASS.JS
 HAND-MADE JAVASCRIPT CLASS CONTAINING A FAUST MODULE AND ITS INTERFACE
@@ -4754,9 +4703,12 @@ class CompositionModule extends GraphicalModule {
     constructor(id, x, y, name, htmlElementModuleContainer, removeModuleCallBack, moduleInfo, loadedCallback) {
         super(id, x, y, name, htmlElementModuleContainer);
         this.fModuleInterfaceParams = {};
+        this.currentTime = 0;
+        this.currentBeat = 0;
         //this.MIDIcontrol =new MIDIManager(this.midiCallback);
         this.eventCloseEditHandler = (event) => { this.recompileSource(event, this); };
         this.eventOpenEditHandler = () => { this.edit(); };
+        this.setJSON(moduleInfo);
         this.deleteCallback = removeModuleCallBack;
         this.typeString = "midimaster";
         this.moduleType = ModuleType.MidiController;
@@ -4764,7 +4716,9 @@ class CompositionModule extends GraphicalModule {
         this.movements = [];
         this.instrumentControllers = {};
         this.playLoopInterval = 200;
-        this.BPM = 60;
+        this.BPM = 120;
+        this.movementMaxLoops = 1;
+        this.timeoutPointer = null;
         this.fetchCompositionFile(moduleInfo.file, loadedCallback);
         // var connector: Connector = new Connector();
         // connector.createConnection(this, this.moduleView.getOutputNode(), saveOutCnx[i].destination, saveOutCnx[i].destination.moduleView.getInputNode());
@@ -4787,8 +4741,8 @@ class CompositionModule extends GraphicalModule {
         // this.movements.clear();
         this.totalMovements = comp.n_movements;
         console.log(`Comp contains ${this.totalMovements} movements`);
-        for (let i = 0; i < comp.n_movements; i++) {
-            movement = comp.movements[i];
+        for (let movement_idx = 0; movement_idx < comp.n_movements; movement_idx++) {
+            movement = comp.movements[movement_idx];
             this.movements.push(movement);
             console.log(`Movement contains ${movement.instruments} instruments`);
             for (let inst of movement.instruments) {
@@ -4798,26 +4752,49 @@ class CompositionModule extends GraphicalModule {
                 }
             }
             for (let inst of movement.instruments) {
-                for (let midifile of movement.midi_files[inst]) {
-                    this.instrumentControllers[inst].loadMidi(Utilitary.getMidiDir() + midifile, i);
+                for (let i = 0; i < movement.midi_files[inst].length; i++) {
+                    let midifile = movement.midi_files[inst][i];
+                    let prob = movement.probabilities[inst][i];
+                    this.instrumentControllers[inst].loadMidi(Utilitary.getMidiDir() + midifile, movement_idx, prob);
                 }
             }
         }
         this.currentMovement = comp.movements[0];
         this.movementIndex = 0;
     }
-    startMovement(movementIndex) {
-        var movementInstruments = this.movements[movementIndex].instruments;
+    // stopMovement(movementIndex): void {
+    //     if ( this.timeoutPointer){
+    //         clearTimeout(this.timeoutPointer);
+    //         this.timeoutPointer = null;
+    //     }
+    //     var movementInstruments = this.movements[movementIndex].instruments;
+    //     for (let instrument of this.instruments) {
+    //         let ic: InstrumentController = this.instrumentControllers[instrument]
+    //         //in movement
+    //         if (movementInstruments.indexOf(instrument) >= 0) {
+    //             if (!ic.isPlaying) {
+    //                 ic.stop();
+    //             }
+    //         }
+    //     }
+    // }
+    startMovement(movementIndex, beatOffset = 2) {
+        //if (this.timeoutPointer) clearTimeout(this.timeoutPointer);
+        movementIndex = Math.max(Math.min(this.movements.length - 1, movementIndex), 0);
+        this.movementIndex = movementIndex;
         console.log(`Starting movement ${movementIndex}`);
+        this.currentMovement = this.movements[this.movementIndex];
+        var movementInstruments = this.currentMovement.instruments;
         this.isPlaying = true;
+        this.currentTime = Utilitary.audioContext.currentTime;
+        this.currentBeat = 0;
+        var startBeat = this.currentBeat + beatOffset;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
-            ic.currentMovement = movementIndex;
-            //in movement
+            ic.mIdx = movementIndex;
+            //Instrument in movement
             if (movementInstruments.indexOf(instrument) >= 0) {
-                if (!ic.isPlaying) {
-                    ic.play();
-                }
+                ic.playMovement(this.movementIndex, startBeat);
             }
             // not in movement
             else {
@@ -4826,24 +4803,24 @@ class CompositionModule extends GraphicalModule {
                 }
             }
         }
-        this.playLoop();
+        console.log(`Done starting movement ${movementIndex}`);
+        //If we've haven't started the playloop yet
+        if (!this.timeoutPointer)
+            this.playLoop();
     }
     playAll() {
         this.isPlaying = true;
+        this.currentTime = Utilitary.audioContext.currentTime;
+        this.currentBeat = 0;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
-            ic.currentMovement = this.movementIndex;
+            ic.mIdx = this.movementIndex;
             if (!ic.isPlaying) {
                 ic.play();
             }
         }
-        this.playLoop();
-    }
-    setBPM(bpm) {
-        for (let instrument of this.instruments) {
-            let ic = this.instrumentControllers[instrument];
-            ic.setBPM(bpm);
-        }
+        if (!this.timeoutPointer)
+            this.playLoop();
     }
     stopAll() {
         this.isPlaying = false;
@@ -4853,9 +4830,14 @@ class CompositionModule extends GraphicalModule {
                 ic.stop();
             }
         }
+        if (this.timeoutPointer) {
+            clearTimeout(this.timeoutPointer);
+            this.timeoutPointer = null;
+        }
     }
     //todo: add probabilities
     nextMovement() {
+        //this.stopMovement(this.movementIndex)
         this.movementIndex += 1;
         this.startMovement(this.movementIndex);
     }
@@ -4898,24 +4880,42 @@ class CompositionModule extends GraphicalModule {
         // }
     }
     instrumentReadMidi() {
+        //console.log(`BEGIN READMIDI for beat  ${this.currentBeat}- timeoutPointer ${this.timeoutPointer}`)
+        var timeDiff = Utilitary.audioContext.currentTime - this.currentTime;
+        this.currentTime = Utilitary.audioContext.currentTime;
+        var beatDiff = AudioUtils.secondsToBeats(timeDiff, this.BPM);
+        this.currentBeat += beatDiff;
+        //console.log(`Current beat is ${this.currentBeat}`);
+        var currentMovementMinLoop = this.currentMovement.max_loops;
         for (let instrument of this.instruments) {
             let ic = this.instrumentControllers[instrument];
             if (ic.isPlaying) {
-                ic.readMidi();
+                if (ic.isAboutToLoop()) {
+                    console.log("Random next");
+                    ic.getNextRandomPiece(this.currentBeat);
+                }
+                ic.readMidi(this.currentBeat, this.currentTime, this.BPM);
+                currentMovementMinLoop = Math.min(ic.getNumberOfLoops(), currentMovementMinLoop);
             }
+        }
+        //console.log(`END READMIDI  for Current movement - ${this.movementIndex} - beat  ${this.currentBeat}- loop count ${currentMovementMinLoop} - timeoutPointer ${this.timeoutPointer}`)
+        if (currentMovementMinLoop >= this.currentMovement.max_loops) {
+            console.log("switching to next movement");
+            this.nextMovement();
         }
     }
     playLoop() {
-        //this.synchronizeInstruments()
-        this.instrumentReadMidi();
         if (this.isPlaying) {
-            setTimeout(() => { this.playLoop(); }, this.playLoopInterval);
+            this.instrumentReadMidi();
+            this.timeoutPointer = setTimeout(() => { this.playLoop(); }, this.playLoopInterval);
+        }
+        else {
+            this.timeoutPointer = null;
         }
     }
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule() {
-        //var connector: Connector = new Connector()
-        //connector.disconnectMIDIModule(this);
+        // Disconnections handled in parent class
         super.deleteModule();
         this.deleteCallback(this);
     }
@@ -4984,7 +4984,7 @@ class CompositionModule extends GraphicalModule {
         for (let inst of this.instruments) {
             this.moduleControles.push(FaustInterfaceControler.addMidiLabel(inst, () => { }));
         }
-        this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 60, 1, (controller) => { this.interfaceBPMSliderCallback(controller); }));
+        this.moduleControles.push(FaustInterfaceControler.addSlider("BPM", 30, 300, 120, 1, (controller) => { this.interfaceBPMSliderCallback(controller); }));
         //this.moduleControles = moduleFaustInterface.parseFaustJsonUI(JSON.parse(this.getJSON()).ui, this);
     }
     //---- Generic callback for Faust Interface
@@ -5000,12 +5000,12 @@ class CompositionModule extends GraphicalModule {
         if (output)
             output.textContent = "" + val + " " + faustControler.unit;
         this.BPM = fval;
-        this.setBPM(fval);
+        //this.setBPM(fval)        
     }
     getMidiOutput(instrument_id) {
         for (let i = 0; i < this.moduleControles.length; i++) {
             var controler = this.moduleControles[i];
-            if (controler.faustInterfaceView.label.textContent === instrument_id) {
+            if (controler.faustInterfaceView.label && controler.faustInterfaceView.label.textContent === instrument_id) {
                 return controler.faustInterfaceView.outputNode;
             }
         }
@@ -6548,18 +6548,21 @@ class App {
                 }
             }));
         }
-        else if (moduleJson.moduleType === "midi_reader") {
-            let module = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); });
-            module.setFaustInterfaceControles();
-            module.createFaustInterface();
-            module.addInputOutputNodes();
-            module.loadAndPlay();
-            // the current scene add the module and hide the loading page
-            Utilitary.currentScene.addModule(module);
-            if (!Utilitary.currentScene.isInitLoading) {
-                Utilitary.hideFullPageLoading();
-            }
-        }
+        // else if (moduleJson.moduleType === "midi_reader"){
+        //     let module: ModuleMIDIReader = new ModuleMIDIReader(Utilitary.idX++, this.tempModuleX,
+        //         this.tempModuleY, this.tempModuleName, 
+        //         document.getElementById("modules"), 
+        //         (module) => { Utilitary.currentScene.removeModule(module) });
+        //     module.setFaustInterfaceControles();
+        //     module.createFaustInterface();
+        //     module.addInputOutputNodes();
+        //     module.loadAndPlay();
+        //     // the current scene add the module and hide the loading page
+        //     Utilitary.currentScene.addModule(module);
+        //     if (!Utilitary.currentScene.isInitLoading) {
+        //         Utilitary.hideFullPageLoading()
+        //     }
+        // }
         else if (moduleJson.moduleType === "CompositionModule") {
             //create new module
             new CompositionModule(Utilitary.idX++, this.tempModuleX, this.tempModuleY, this.tempModuleName, document.getElementById("modules"), (module) => { Utilitary.currentScene.removeModule(module); }, moduleJson, (module) => {
@@ -6829,7 +6832,7 @@ class App {
     //manage the window size
     checkRealWindowSize() {
         if (window.scrollX > 0) {
-            console.log(document.getElementsByTagName("html")[0]);
+            //console.log(document.getElementsByTagName("html")[0]);
             document.getElementsByTagName("html")[0].style.width = window.innerWidth + window.scrollX + "px";
             document.getElementById("svgCanvas").style.width = window.innerWidth + window.scrollX + "px";
             document.getElementById("menuContainer").style.width = window.innerWidth + window.scrollX + "px";

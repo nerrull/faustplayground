@@ -215,13 +215,14 @@ class Drag {
             
             // Get the position of the originating connector with respect to the page.
             
-            var offset: HTMLElement;
+            var offset: HTMLElement =target;
             if (this.isParameter)
-                offset = <HTMLElement> target.parentNode;
-            else if (!this.isOriginInput)
-                offset = destination.moduleView.getInputNode();
-            else
-                offset = destination.moduleView.getOutputNode();
+            {
+                if(target.classList.contains("node-button")) offset = <HTMLElement> target.parentNode;
+                else offset = target;
+            }
+            else if (!this.isOriginInput) offset = destination.moduleView.getInputNode();
+            else offset = destination.moduleView.getOutputNode();
             
             var toElem: HTMLElement = offset;
             
@@ -287,7 +288,7 @@ class Drag {
 
                         connector.connectMidiCompositionModule(fSrc, fDst, this.instrument_id);
                         dst.moduleFaust.addMidiInputConnection(connector);
-                        src.moduleFaust.addMidiInputConnection(connector);
+                        src.moduleFaust.addMidiOutputConnection(connector);
                         connector.saveConnection(fSrc, fDst, this.connector.connectorShape);
                         this.connector.connectorShape.onclick = (event)=> { connector.deleteMidiConnection(event,this) };
 

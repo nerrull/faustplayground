@@ -42,10 +42,6 @@ class ModuleClass extends GraphicalModule  {
 
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule(): void {
-
-        var connector: Connector = new Connector()
-        connector.disconnectModule(this);
-
         super.deleteModule();
 
         this.deleteDSP(this.moduleFaust.fDSP);

@@ -114,6 +114,10 @@ class Utilitary {
         return indexes;
     }
 
+    static floatP(x:number){
+        return x.toPrecision(4);
+    }
+
 }
 /********************************************************************
 **************************  interfaces  *****************************

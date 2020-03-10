@@ -74,6 +74,7 @@ class GraphicalModule  {
         this.moduleView.getModuleContainer().addEventListener("touchstart", this.eventDraggingHandler, false);
         this.moduleView.getModuleContainer().addEventListener("touchmove", this.eventDraggingHandler, false);
         this.moduleView.getModuleContainer().addEventListener("touchend", this.eventDraggingHandler, false);
+
         if (this.moduleView.textArea != undefined) {
             this.moduleView.textArea.addEventListener("touchstart", (e) => { e.stopPropagation() });
             this.moduleView.textArea.addEventListener("touchend", (e) => { e.stopPropagation() });
@@ -154,8 +155,8 @@ class GraphicalModule  {
     /*******************************  PUBLIC METHODS  **********************************/
     deleteModule(): void {
         
-        // var connector: Connector = new Connector()
-        // connector.disconnectModule(this);
+        var connector: Connector = new Connector()
+        connector.disconnectModule(this);
         
         this.deleteFaustInterface();
         
@@ -405,6 +406,10 @@ class GraphicalModule  {
 
     getInputMidiConnections() : Connector[]{
         return this.moduleFaust.mInputConnections;
+    }
+
+    getOutputMidiConnections() : Connector[]{
+        return this.moduleFaust.mOutputConnections;
     }
     
 

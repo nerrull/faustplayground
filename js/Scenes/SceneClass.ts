@@ -255,16 +255,14 @@ class Scene {
                 var midiOutputs :Connector[]= module.moduleFaust.getMidiOutputConnections();
                 var jsonMidiOutputs: JsonMidiConnectionSave = new JsonMidiConnectionSave();
                 jsonMidiOutputs.connections = [];
-                var info : JsonMidiConnectionInfo;
+                
 
                 if (midiOutputs) {
                     for (var j = 0; j < midiOutputs.length; j++) {
-                        info.destination = midiOutputs[j].destination.patchID.toString();
-                        info.instrumentID = midiOutputs[j].midiInstrumentID;
+                        var info : JsonMidiConnectionInfo = { "destination" : midiOutputs[j].destination.patchID, "instrumentID": midiOutputs[j].midiInstrumentID }
                         jsonMidiOutputs.connections.push(info);
                     }
                 }
-
 
                 if (module.moduleFaust.getDSP())
                 {
@@ -447,6 +445,7 @@ class Scene {
             	this.launchModuleCreation();
             });
         } catch (e) {
+            console.log(e);
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
             //next module
             this.arrayRecalScene.shift();
@@ -455,7 +454,6 @@ class Scene {
     }
 
     createCompositionModule(moduleJson):void {
-        //create new module
         try {
              new CompositionModule(Utilitary.idX++, this.tempModuleX,
                 this.tempModuleY, this.tempModuleName, 
@@ -472,8 +470,8 @@ class Scene {
                     }
                     
 
-                    // module.moduleFaust.recallMidiDestination = this.arrayRecalScene[0].midiOutputs.connections;
-                    // this.arrayRecalledModule.push(module);
+                    module.moduleFaust.recallMidiDestination = this.arrayRecalScene[0].midiOutputs.connections;
+                    this.arrayRecalledModule.push(module);
                     module.recallInterfaceParams();                   
                     
                     module.setFaustInterfaceControles();
@@ -487,6 +485,7 @@ class Scene {
                     this.launchModuleCreation();
             });   
         } catch (e) {
+            console.log(e);
             new Message(Utilitary.messageRessource.errorCreateModuleRecall);
             //next module
             this.arrayRecalScene.shift();
@@ -501,7 +500,9 @@ class Scene {
                 var moduleSource = this.getModuleByPatchId(module.moduleFaust.recallInputsSource[i]);
                 if (moduleSource != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(moduleSource as ModuleClass, moduleSource.moduleView.getOutputNode(), module as ModuleClass, module.moduleView.getInputNode());
+                    if (!connector.alreadyConnected(moduleSource, module))
+                        connector.createConnection(moduleSource as ModuleClass, moduleSource.moduleView.getOutputNode(),
+                         module as ModuleClass, module.moduleView.getInputNode());
                 }
             }
 
@@ -509,18 +510,20 @@ class Scene {
                 var moduleDestination = this.getModuleByPatchId(module.moduleFaust.recallOutputsDestination[i]);
                 if (moduleDestination != null) {
                     var connector: Connector = new Connector();
-                    connector.createConnection(module as ModuleClass, module.moduleView.getOutputNode(), moduleDestination as ModuleClass, moduleDestination.moduleView.getInputNode());
+                    if (!connector.alreadyConnected(module, moduleDestination))
+                        connector.createConnection(module as ModuleClass, module.moduleView.getOutputNode(),
+                         moduleDestination as ModuleClass, moduleDestination.moduleView.getInputNode());
                 }
             }
 
             //reconnect midi
             for (var i = 0; i < module.moduleFaust.recallMidiDestination.length; i++) {
                 var connection : JsonMidiConnectionInfo =module.moduleFaust.recallMidiDestination[i]
-                var moduleDestination : GraphicalModule = this.getModuleByPatchId(connection.instrumentID);
+                var moduleDestination : GraphicalModule = this.getModuleByPatchId(connection.destination);
                 if (moduleDestination != null) {
                     var connector: Connector = new Connector();
                     connector.midiInstrumentID = connection.instrumentID;
-                    connector.createConnection(module as CompositionModule, (module as CompositionModule).getMidiOutput(connection.destination), moduleDestination as ModuleClass, moduleDestination.moduleView.getMidiNode());
+                    connector.createConnection(module as CompositionModule, (module as CompositionModule).getMidiOutput(connection.instrumentID), moduleDestination as ModuleClass, moduleDestination.moduleView.getMidiNode());
                 }
             }
         } catch (e) {
