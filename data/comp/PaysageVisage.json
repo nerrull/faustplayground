@@ -38,9 +38,9 @@
             "max_loops" : 4, 
             "instruments" : ["Flute", "SoftHarp", "Kisana"],
             "probabilities" : { 
-                "Flute" : [1,1,1],
-                "SoftHarp" : [1,1,1],
-                "Kisana" :  [1,1,1]
+                "Flute" : [1,1,1,1],
+                "SoftHarp" : [1,1,1,1],
+                "Kisana" :  [1,1,1,3]
             },
             "midi_files" : {
                 "Flute" : [
@@ -159,12 +159,12 @@
             }
         },
         {
-           "max_loops" : 20, 
+           "max_loops" : 15, 
            "instruments" : ["Flute", "SoftHarp", "Kisana", "TunedBars1", "TunedBars3"],
             "probabilities" : { 
                 "Flute" : [1,1,1,1],
                 "SoftHarp" : [1,1,1,1],
-                "Kisana" :  [1,1,1,1],
+                "Kisana" :  [1,1,1,3,1],
                 "TunedBars1" : [3,3,1],
                 "TunedBars3" :  [3,3,1]
             },
@@ -176,7 +176,7 @@
                     "C-transition/softharp.mid", "C-transition/flute.mid", "C-transition/kisana.mid", "silence1.mid"
                 ],
                 "Kisana" : [
-                    "C-transition/kisana.mid", "C-transition/flute.mid", "C-transition/softharp.mid", "silence1.mid"
+                    "C-transition/kisana.mid", "C-transition/flute.mid", "C-transition/softharp.mid", "silence1.mid", "silence4.mid"
                 ],
                 "TunedBars1" : [
                     "C-transition/tunedbars1.mid",  "silence1.mid", "silence4.mid"
@@ -188,7 +188,7 @@
         },
         {
            "max_loops" : 1, 
-           "instruments" : ["Flute", "SoftHarp", "Kisana", "Whistle", "TunedBars1", "TunedBars3"],
+           "instruments" : ["Flute", "SoftHarp",  "Whistle", "TunedBars1", "TunedBars3"],
             "probabilities" : { 
                 "Flute" : [1],
                 "SoftHarp" : [1],
@@ -202,11 +202,9 @@
                     "C-end/flute.mid"
                 ],
                 "SoftHarp" : [
-                    "C-end/softharp.mid"
-                ],
-                "Kisana" : [
                     "C-end/kisana.mid"
                 ],
+
                 "Whistle" : [
                     "C-end/whistle.mid"
                 ],
