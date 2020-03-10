@@ -1,0 +1,255 @@
+{
+    "n_movements":9,
+
+    "movements":[
+        {
+            "max_loops" : 1, 
+            "instruments" : ["Flute", "SoftHarp", "Kisana", "Whistle", "TunedBars1", "TunedBars3"],
+            "probabilities" : { 
+                "Flute" : [1],
+                "SoftHarp" : [1],
+                "Kisana" :  [1],
+                "Whistle" : [1],
+                "TunedBars1" : [1],
+                "TunedBars3" :  [1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "A-main/flute.mid"
+                ],
+                "SoftHarp" : [
+                    "A-main/softharp.mid"
+                ],
+                "Kisana" : [
+                    "A-main/kisana.mid"
+                ],
+                "Whistle" : [
+                    "A-main/whistle.mid"
+                ],
+                "TunedBars1" : [
+                    "A-main/tunedbars1.mid"
+                ],
+                "TunedBars3" : [
+                    "A-main/tunedbars3.mid"
+                ]
+            }
+        },
+        {
+            "max_loops" : 4, 
+            "instruments" : ["Flute", "SoftHarp", "Kisana"],
+            "probabilities" : { 
+                "Flute" : [1,1,1],
+                "SoftHarp" : [1,1,1],
+                "Kisana" :  [1,1,1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "A-transition/flute.mid", "A-transition/kisana.mid",  "A-transition/softharp.mid",  "silence1.mid"
+                ],
+                "SoftHarp" : [
+                    "A-transition/softharp.mid", "A-transition/flute.mid", "A-transition/flute.mid", "silence1.mid"
+                ],
+                "Kisana" : [
+                    "A-transition/kisana.mid", "A-transition/softharp.mid","A-transition/flute.mid", "silence1.mid"
+                ]
+
+            }
+        },
+        {
+            "max_loops" : 1, 
+            "instruments" : ["Flute", "TunedBars1",  "TunedBars3" ],
+            "probabilities" : { 
+                "Flute" : [1],
+                "TunedBars1" : [1],
+                "TunedBars3" :  [1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "A-end/flute.mid"
+                ],
+                "TunedBars1" : [
+                    "A-end/tunedbars1.mid"
+                ],
+                "TunedBars3" : [
+                    "A-end/tunedbars3.mid"
+                ]
+
+            }
+        },
+        {
+            "max_loops" : 1, 
+           "instruments" : ["Flute", "SoftHarp", "Kisana","TunedBars1",  "TunedBars3"],
+            "probabilities" : { 
+                "Flute" : [1],
+                "SoftHarp" : [1],
+                "Kisana" :  [1],
+                "TunedBars1" : [1],
+                "TunedBars3" :  [1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "B-main/flute.mid"
+                ],
+                "SoftHarp" : [
+                    "B-main/softharp.mid"
+                ],
+                "Kisana" : [
+                    "B-main/kisana.mid"
+                ],
+                "TunedBars1" : [
+                    "B-main/tunedbars1.mid"
+                ],
+                "TunedBars3" : [
+                    "B-main/tunedbars3.mid"
+                ]
+            }
+        },
+        {
+            "max_loops" : 4, 
+           "instruments" : [ "SoftHarp", "Kisana", "TunedBars1",  "TunedBars3" ],
+            "probabilities" : { 
+                "SoftHarp" : [1,1,1,1],
+                "Kisana" : [1,1,1],
+                "TunedBars1" : [1,1,1],
+                "TunedBars3" :  [1,1,1]
+            },
+            "midi_files" : {
+                "SoftHarp" : [
+                    "B-transition/softharp.mid",  "B-transition/tunedbars1.mid", "B-transition/tunedbars3.mid",  "silence1.mid"
+                ],
+                "Kisana" : [
+                    "B-transition/tunedbars1.mid", "B-transition/tunedbars3.mid",  "silence1.mid"
+                ],
+                "TunedBars1" : [
+                    "B-transition/tunedbars1.mid", "B-transition/tunedbars3.mid", "silence1.mid"
+
+                ],
+                "TunedBars3" : [
+                    "B-transition/tunedbars3.mid", "B-transition/tunedbars1.mid", "silence1.mid"
+                ]
+
+            }
+        },
+        {
+            "max_loops" : 1, 
+           "instruments" : ["Flute", "SoftHarp", "Kisana",  "TunedBars1", "TunedBars3"],
+            "probabilities" : { 
+                "Flute" : [1],
+                "SoftHarp" : [1],
+                "Kisana" :  [1],
+                "TunedBars1" : [1],
+                "TunedBars3" :  [1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "C-main/flute.mid"
+                ],
+                "SoftHarp" : [
+                    "C-main/softharp.mid"
+                ],
+                "Kisana" : [
+                    "C-main/kisana.mid"
+                ],
+                "TunedBars1" : [
+                    "C-main/tunedbars1.mid"
+                ],
+                "TunedBars3" : [
+                    "C-main/tunedbars3.mid"
+                ]
+            }
+        },
+        {
+           "max_loops" : 20, 
+           "instruments" : ["Flute", "SoftHarp", "Kisana", "TunedBars1", "TunedBars3"],
+            "probabilities" : { 
+                "Flute" : [1,1,1,1],
+                "SoftHarp" : [1,1,1,1],
+                "Kisana" :  [1,1,1,1],
+                "TunedBars1" : [3,3,1],
+                "TunedBars3" :  [3,3,1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "C-transition/flute.mid", "C-transition/softharp.mid", "C-transition/kisana.mid", "silence1.mid"
+                ],
+                "SoftHarp" : [
+                    "C-transition/softharp.mid", "C-transition/flute.mid", "C-transition/kisana.mid", "silence1.mid"
+                ],
+                "Kisana" : [
+                    "C-transition/kisana.mid", "C-transition/flute.mid", "C-transition/softharp.mid", "silence1.mid"
+                ],
+                "TunedBars1" : [
+                    "C-transition/tunedbars1.mid",  "silence1.mid", "silence4.mid"
+                ],
+                "TunedBars3" : [
+                    "C-transition/tunedbars3.mid",  "silence1.mid",  "silence4.mid"
+                ]
+            }
+        },
+        {
+           "max_loops" : 1, 
+           "instruments" : ["Flute", "SoftHarp", "Kisana", "Whistle", "TunedBars1", "TunedBars3"],
+            "probabilities" : { 
+                "Flute" : [1],
+                "SoftHarp" : [1],
+                "Kisana" :  [1],
+                "Whistle" : [1],
+                "TunedBars1" : [1],
+                "TunedBars3" :  [1]
+            },
+            "midi_files" : {
+                "Flute" : [
+                    "C-end/flute.mid"
+                ],
+                "SoftHarp" : [
+                    "C-end/softharp.mid"
+                ],
+                "Kisana" : [
+                    "C-end/kisana.mid"
+                ],
+                "Whistle" : [
+                    "C-end/whistle.mid"
+                ],
+                "TunedBars1" : [
+                    "C-end/tunedbars1.mid"
+                ],
+                "TunedBars3" : [
+                    "C-end/tunedbars3.mid"
+                ]
+            }
+        },
+        {
+            "max_loops" : 10, 
+            "instruments" : ["Flute", "SoftHarp", "Kisana", "Whistle", "TunedBars1", "TunedBars3"],
+             "probabilities" : { 
+                 "Flute" : [1],
+                 "SoftHarp" : [1],
+                 "Kisana" :  [1],
+                 "Whistle" : [1],
+                 "TunedBars1" : [1],
+                 "TunedBars3" :  [1]
+             },
+             "midi_files" : {
+                 "Flute" : [
+                     "silence4.mid"
+                 ],
+                 "SoftHarp" : [
+                    "silence4.mid"
+                ],
+                 "Kisana" : [
+                    "silence4.mid"
+                ],
+                 "Whistle" : [
+                    "silence4.mid"
+                ],
+                 "TunedBars1" : [
+                    "silence4.mid"
+                ],
+                 "TunedBars3" : [
+                    "silence4.mid"
+                ]
+             }
+         }
+
+    ]
+}
